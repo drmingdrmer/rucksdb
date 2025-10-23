@@ -1,9 +1,11 @@
+use crate::filter::FilterPolicy;
 use crate::table::block_builder::BlockBuilder;
 use crate::table::format::{BlockHandle, Footer, DEFAULT_BLOCK_SIZE, FOOTER_SIZE};
 use crate::util::{Result, Slice, Status};
 use std::fs::File;
 use std::io::Write;
 use std::path::Path;
+use std::sync::Arc;
 
 /// Table builder for creating SSTable files
 pub struct TableBuilder {
@@ -16,11 +18,21 @@ pub struct TableBuilder {
     block_size: usize,
     pending_index_entry: bool,
     pending_handle: BlockHandle,
+    filter_policy: Option<Arc<dyn FilterPolicy>>,
+    filter_keys: Vec<Vec<u8>>, // Keys to build filter from
 }
 
 impl TableBuilder {
-    /// Create a new table builder
+    /// Create a new table builder without filter
     pub fn new<P: AsRef<Path>>(path: P) -> Result<Self> {
+        Self::new_with_filter(path, None)
+    }
+
+    /// Create a new table builder with optional filter policy
+    pub fn new_with_filter<P: AsRef<Path>>(
+        path: P,
+        filter_policy: Option<Arc<dyn FilterPolicy>>,
+    ) -> Result<Self> {
         let file = File::create(path)
             .map_err(|e| Status::io_error(format!("Failed to create table file: {}", e)))?;
 
@@ -34,6 +46,8 @@ impl TableBuilder {
             block_size: DEFAULT_BLOCK_SIZE,
             pending_index_entry: false,
             pending_handle: BlockHandle::new(0, 0),
+            filter_policy,
+            filter_keys: Vec::new(),
         })
     }
 
@@ -50,6 +64,11 @@ impl TableBuilder {
             let handle_encoded = self.pending_handle.encode();
             self.index_block.add(&Slice::from(separator), &Slice::from(handle_encoded));
             self.pending_index_entry = false;
+        }
+
+        // Collect key for filter if filter policy is set
+        if self.filter_policy.is_some() {
+            self.filter_keys.push(key.data().to_vec());
         }
 
         self.last_key.clear();
@@ -102,13 +121,22 @@ impl TableBuilder {
             self.pending_index_entry = false;
         }
 
-        // Write meta index block (empty for now)
-        let meta_index_block_data = BlockBuilder::default().finish();
-        let meta_index_handle = BlockHandle::new(self.offset, meta_index_block_data.len() as u64);
-        self.file
-            .write_all(&meta_index_block_data)
-            .map_err(|e| Status::io_error(format!("Failed to write meta index block: {}", e)))?;
-        self.offset += meta_index_block_data.len() as u64;
+        // Write filter block if filter policy is set
+        let filter_block_handle = if let Some(ref policy) = self.filter_policy {
+            let filter_data = policy.create_filter(&self.filter_keys);
+            let handle = BlockHandle::new(self.offset, filter_data.len() as u64);
+            self.file
+                .write_all(&filter_data)
+                .map_err(|e| Status::io_error(format!("Failed to write filter block: {}", e)))?;
+            self.offset += filter_data.len() as u64;
+            handle
+        } else {
+            // No filter, use empty handle
+            BlockHandle::new(0, 0)
+        };
+
+        // Use filter_block_handle as meta_index_handle in footer
+        let meta_index_handle = filter_block_handle;
 
         // Write index block
         let index_block_data = self.index_block.finish();

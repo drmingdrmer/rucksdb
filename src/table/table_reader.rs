@@ -1,10 +1,12 @@
 use crate::cache::LRUCache;
+use crate::filter::FilterPolicy;
 use crate::table::block::Block;
 use crate::table::format::{BlockHandle, Footer, FOOTER_SIZE};
 use crate::util::{Result, Slice, Status};
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
+use std::sync::Arc;
 
 /// Table reader for reading SSTable files
 pub struct TableReader {
@@ -14,6 +16,8 @@ pub struct TableReader {
     index_block: Block,
     footer: Footer,
     block_cache: Option<LRUCache<(u64, u64), Vec<u8>>>,
+    filter_policy: Option<Arc<dyn FilterPolicy>>,
+    filter_data: Option<Vec<u8>>, // Filter block data
 }
 
 impl TableReader {
@@ -22,6 +26,16 @@ impl TableReader {
         path: P,
         file_number: u64,
         block_cache: Option<LRUCache<(u64, u64), Vec<u8>>>,
+    ) -> Result<Self> {
+        Self::open_with_filter(path, file_number, block_cache, None)
+    }
+
+    /// Open an SSTable file for reading with optional filter policy
+    pub fn open_with_filter<P: AsRef<Path>>(
+        path: P,
+        file_number: u64,
+        block_cache: Option<LRUCache<(u64, u64), Vec<u8>>>,
+        filter_policy: Option<Arc<dyn FilterPolicy>>,
     ) -> Result<Self> {
         let mut file = File::open(path)
             .map_err(|e| Status::io_error(format!("Failed to open table file: {}", e)))?;
@@ -46,6 +60,14 @@ impl TableReader {
         let footer = Footer::decode(&footer_data)
             .ok_or_else(|| Status::corruption("Invalid footer"))?;
 
+        // Read filter block if present
+        let filter_data = if filter_policy.is_some() && footer.meta_index_handle.size > 0 {
+            let filter_block_data = Self::read_block_uncached(&mut file, &footer.meta_index_handle)?;
+            Some(filter_block_data)
+        } else {
+            None
+        };
+
         // Read index block (not cached, as it's small and accessed once)
         let index_block_data = Self::read_block_uncached(&mut file, &footer.index_handle)?;
         let index_block = Block::new(index_block_data)?;
@@ -57,6 +79,8 @@ impl TableReader {
             index_block,
             footer,
             block_cache,
+            filter_policy,
+            filter_data,
         })
     }
 
@@ -96,6 +120,15 @@ impl TableReader {
 
     /// Get a value by key
     pub fn get(&mut self, key: &Slice) -> Result<Option<Slice>> {
+        // Check filter first to avoid unnecessary disk I/O
+        if let (Some(ref policy), Some(ref filter_data)) = (&self.filter_policy, &self.filter_data) {
+            if !policy.may_contain(filter_data, key.data()) {
+                // Filter says key definitely doesn't exist
+                return Ok(None);
+            }
+            // Filter says key might exist, continue with search
+        }
+
         // Search index block for the data block containing the key
         let mut iter = self.index_block.iter();
         iter.seek_to_first()?;

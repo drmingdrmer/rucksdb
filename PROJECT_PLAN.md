@@ -16,12 +16,12 @@ Complete Rust reimplementation of RocksDB with all core features and optimizatio
 |-------|--------|-----------|----------|
 | Phase 1: Foundation | ✅ Complete | 100% | 1 day |
 | Phase 2: LSM-Tree Core | ✅ Complete | 100% | 1 day |
-| Phase 3: Performance | 🔄 In Progress | 25% | 1 session |
+| Phase 3: Performance | 🔄 In Progress | 50% | 2 sessions |
 | Phase 4: Advanced Features | ⏳ Planned | 0% | 4-6 weeks |
 | Phase 5: Stability | ⏳ Planned | 0% | Ongoing |
 
-**Total Lines of Code**: 4310 lines (+350 in Phase 3.1)
-**Total Tests**: 99 (all passing, +9 since Phase 2.3)
+**Total Lines of Code**: 4740 lines (+430 in Phase 3.2)
+**Total Tests**: 108 (all passing, +9 since Phase 3.1)
 
 ---
 
@@ -259,15 +259,34 @@ Implement persistent storage with LSM-Tree architecture.
 
 ---
 
-### 3.2 Bloom Filter ⏳
-**Priority**: High | **Estimated**: 1 week
+### 3.2 Bloom Filter ✅ COMPLETED (2025-10-23)
+**Priority**: High | **Actual**: 1 session
 
-- [ ] Bloom filter implementation
-- [ ] Filter policy abstraction
-- [ ] Integration with SSTable
-- [ ] Filter block format
+- [x] Bloom filter implementation
+  - [x] BloomFilterPolicy with configurable bits per key
+  - [x] Multiple hash functions (k = bits_per_key * 0.69)
+  - [x] Bloom hash function with delta rotation
+  - [x] Optimized for ~1% false positive rate at 10 bits/key
+- [x] Filter policy abstraction
+  - [x] FilterPolicy trait (create_filter, may_contain)
+  - [x] Send + Sync for thread safety
+- [x] Integration with SSTable
+  - [x] TableBuilder collects keys during add()
+  - [x] Filter block written before index block
+  - [x] Filter handle stored in Footer.meta_index_handle
+  - [x] TableReader reads filter block on open
+  - [x] Filter check before data block read (early return)
+- [x] Filter block format
+  - [x] Bit array + k value at end
+  - [x] Size = (num_keys * bits_per_key + 7) / 8
+  - [x] Minimum 64 bits to avoid issues with small datasets
+- [x] **Tests**: 9 filter tests (6 unit + 3 integration, 0% FP rate on test data)
 
-**Deliverable**: Reduce disk I/O for non-existent keys
+**Commit**: `xxxxxxx` - Implement Bloom filter with SSTable integration
+**Files Added**: src/filter/mod.rs, src/filter/bloom.rs, tests/bloom_filter_test.rs
+**Files Modified**: src/lib.rs, src/table/table_builder.rs, src/table/table_reader.rs
+**LOC Added**: ~430 lines
+**Deliverable**: ✅ Bloom filter reduces disk I/O for non-existent keys
 
 ---
 
@@ -422,6 +441,16 @@ Implement persistent storage with LSM-Tree architecture.
 - **Integration**: TableReader holds optional cache reference, checks before disk read
 - **Borrow Checker Fix**: Pre-compute values to avoid overlapping borrows
 
+### 2025-10-23 - Phase 3.2 Bloom Filter
+- **Hash Functions**: k = (bits_per_key * 0.69), clamped to [1, 30]
+- **Bloom Hash**: Simple multiplicative hash with wrapping arithmetic
+- **Delta Rotation**: Use (h >> 17) | (h << 15) for second hash
+- **Filter Size**: (num_keys * bits_per_key + 7) / 8 bytes, minimum 64 bits
+- **Storage**: Bit array + k value in last byte
+- **Integration**: Filter block stored at Footer.meta_index_handle
+- **Optimization**: Check filter before reading data blocks (early return)
+- **Overflow Fix**: Use wrapping_mul for hash computation
+
 ---
 
 ## Next Session Goals
@@ -434,17 +463,18 @@ Implement persistent storage with LSM-Tree architecture.
 5. ✅ Complete Phase 2.4: DB integration with flush
 6. ✅ Complete Phase 2.3: Compaction (Version management and compaction strategy)
 7. ✅ Complete Phase 3.1: Block Cache implementation
-8. ⏳ Start Phase 3.2: Bloom Filter implementation
+8. ✅ Complete Phase 3.2: Bloom Filter implementation
+9. ⏳ Start Phase 3.3: Compression (Snappy/LZ4)
 
 ### This Week
-- Implement Bloom filter for reducing disk I/O
-- Add filter policy abstraction
-- Integrate with SSTable format
+- Implement compression support (Snappy, LZ4)
+- Add compression abstraction
+- Integrate with block writing/reading
 
 ### This Month
-- Complete Phase 3.2 (Bloom Filter)
 - Complete Phase 3.3 (Compression)
-- Start Phase 3.4 (Concurrency Optimization)
+- Complete Phase 3.4 (Concurrency Optimization)
+- Start Phase 4 (Advanced Features)
 
 ---
 
@@ -479,5 +509,5 @@ Commit message format:
 
 ---
 
-**Last Updated**: 2025-10-23 (Phase 3.1 Complete - Block Cache with LRU Eviction)
-**Next Review**: After Phase 3.2 Bloom Filter
+**Last Updated**: 2025-10-23 (Phase 3.2 Complete - Bloom Filter for Non-Existent Keys)
+**Next Review**: After Phase 3.3 Compression
