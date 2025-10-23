@@ -50,6 +50,7 @@ impl Default for DBOptions {
 
 pub struct DB {
     mem: Arc<RwLock<MemTable>>,
+    imm: Arc<RwLock<Option<MemTable>>>, // Immutable MemTable being flushed
     sequence: Arc<AtomicU64>,
     wal: Arc<RwLock<Option<wal::Writer>>>,
     db_path: PathBuf,
@@ -98,6 +99,7 @@ impl DB {
 
         Ok(DB {
             mem,
+            imm: Arc::new(RwLock::new(None)),
             sequence,
             wal: Arc::new(RwLock::new(Some(wal_writer))),
             db_path: db_path.to_path_buf(),
@@ -225,6 +227,7 @@ impl DB {
         // Check if we need to flush
         if self.should_flush() {
             drop(mem);
+            self.make_immutable();
             self.flush_memtable()?;
         }
 
@@ -232,13 +235,24 @@ impl DB {
     }
 
     pub fn get(&self, _options: &ReadOptions, key: &Slice) -> Result<Option<Slice>> {
-        // First check MemTable
+        // First check mutable MemTable
         {
             let mem = self.mem.read();
             let (found, value) = mem.get(key);
             if found {
                 // Key exists in MemTable (either with value or deleted)
                 return Ok(value);
+            }
+        }
+
+        // Then check immutable MemTable
+        {
+            let imm = self.imm.read();
+            if let Some(imm_table) = imm.as_ref() {
+                let (found, value) = imm_table.get(key);
+                if found {
+                    return Ok(value);
+                }
             }
         }
 
@@ -301,13 +315,19 @@ impl DB {
 
     /// Flush MemTable to SSTable
     fn flush_memtable(&self) -> Result<()> {
-        // Get all entries from MemTable
+        // Get all entries from immutable MemTable
         let entries = {
-            let mem = self.mem.read();
-            mem.collect_entries()
+            let imm = self.imm.read();
+            match imm.as_ref() {
+                Some(imm_table) => imm_table.collect_entries(),
+                None => return Ok(()), // Nothing to flush
+            }
         };
 
         if entries.is_empty() {
+            // Clear empty immutable MemTable
+            let mut imm = self.imm.write();
+            *imm = None;
             return Ok(());
         }
 
@@ -344,13 +364,13 @@ impl DB {
             version_set.log_and_apply(edit)?;
         }
 
-        // Clear MemTable
+        // Clear immutable MemTable (mem continues to accept writes)
         {
-            let mut mem = self.mem.write();
-            *mem = MemTable::new();
+            let mut imm = self.imm.write();
+            *imm = None;
         }
 
-        // Clear WAL
+        // Clear WAL (all data is now persisted)
         {
             let wal_path = self.db_path.join("wal.log");
             let mut wal_guard = self.wal.write();
@@ -362,7 +382,25 @@ impl DB {
 
     fn should_flush(&self) -> bool {
         let mem = self.mem.read();
-        mem.approximate_memory_usage() >= self.options.write_buffer_size
+        if mem.approximate_memory_usage() < self.options.write_buffer_size {
+            return false;
+        }
+
+        // Only return true if imm is empty (no flush in progress)
+        let imm = self.imm.read();
+        imm.is_none()
+    }
+
+    /// Move current MemTable to immutable and create new one
+    fn make_immutable(&self) {
+        let mut mem_guard = self.mem.write();
+        let mut imm_guard = self.imm.write();
+
+        // Only move if imm is empty
+        if imm_guard.is_none() {
+            let old_mem = std::mem::take(&mut *mem_guard);
+            *imm_guard = Some(old_mem);
+        }
     }
 
     /// Compact a level by merging files into the next level
