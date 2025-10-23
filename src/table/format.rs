@@ -61,6 +61,7 @@ pub const MAGIC_NUMBER: u64 = 0x88e3f3fb2af1ecd7;
 pub enum CompressionType {
     None = 0,
     Snappy = 1,
+    Lz4 = 2,
 }
 
 impl CompressionType {
@@ -68,6 +69,7 @@ impl CompressionType {
         match value {
             0 => Some(CompressionType::None),
             1 => Some(CompressionType::Snappy),
+            2 => Some(CompressionType::Lz4),
             _ => None,
         }
     }
@@ -197,7 +199,8 @@ mod tests {
     fn test_compression_type() {
         assert_eq!(CompressionType::from_u8(0), Some(CompressionType::None));
         assert_eq!(CompressionType::from_u8(1), Some(CompressionType::Snappy));
-        assert_eq!(CompressionType::from_u8(2), None);
+        assert_eq!(CompressionType::from_u8(2), Some(CompressionType::Lz4));
+        assert_eq!(CompressionType::from_u8(3), None);
     }
 
     #[test]

@@ -78,34 +78,58 @@ impl BlockBuilder {
         self.counter += 1;
     }
 
-    /// Finish building the block
+    /// Finish building the block with no compression
+    /// Returns the complete block data
+    pub fn finish(&mut self) -> Vec<u8> {
+        self.finish_with_compression(CompressionType::None)
+    }
+
+    /// Finish building the block with specified compression
     /// Returns the complete block data including:
-    /// - Block data
+    /// - Compressed/uncompressed block data
     /// - Restart array
     /// - Num restarts (4 bytes)
     /// - Compression type (1 byte)
     /// - CRC32 checksum (4 bytes)
-    pub fn finish(&mut self) -> Vec<u8> {
+    pub fn finish_with_compression(&mut self, compression: CompressionType) -> Vec<u8> {
         if self.finished {
             return self.buffer.clone();
         }
 
+        // Build uncompressed block first
+        let mut uncompressed = Vec::new();
+        uncompressed.extend_from_slice(&self.buffer);
+
         // Append restart array
         for &restart in &self.restarts {
-            self.buffer.extend_from_slice(&restart.to_le_bytes());
+            uncompressed.extend_from_slice(&restart.to_le_bytes());
         }
 
         // Append number of restarts
-        self.buffer
-            .extend_from_slice(&(self.restarts.len() as u32).to_le_bytes());
+        uncompressed.extend_from_slice(&(self.restarts.len() as u32).to_le_bytes());
 
-        // Calculate checksum before adding compression type and checksum
-        let checksum = calculate_checksum(&self.buffer);
+        // Compress the block if needed
+        let (final_data, final_compression) = if compression != CompressionType::None {
+            match crate::compression::compress(compression, &uncompressed) {
+                Ok(data) if data.len() < uncompressed.len() => {
+                    // Compression helped, use it
+                    (data, compression)
+                }
+                _ => {
+                    // Compression failed or made it larger, use uncompressed
+                    (uncompressed, CompressionType::None)
+                }
+            }
+        } else {
+            (uncompressed, CompressionType::None)
+        };
 
-        // Append compression type
-        self.buffer.push(CompressionType::None as u8);
+        // Calculate checksum of final data
+        let checksum = calculate_checksum(&final_data);
 
-        // Append checksum
+        // Build final block
+        self.buffer = final_data;
+        self.buffer.push(final_compression as u8);
         self.buffer.extend_from_slice(&checksum.to_le_bytes());
 
         self.finished = true;

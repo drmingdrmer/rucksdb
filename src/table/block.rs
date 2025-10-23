@@ -16,10 +16,11 @@ pub struct Block {
 
 impl Block {
     /// Create a block from raw data
-    /// Data format: [entries...][restarts...][num_restarts:4][compression:1][checksum:4]
+    /// Data format: [compressed_data...][compression:1][checksum:4]
+    /// After decompression: [entries...][restarts...][num_restarts:4]
     pub fn new(data: Vec<u8>) -> Result<Self> {
-        if data.len() < 9 {
-            // Minimum: num_restarts(4) + compression(1) + checksum(4)
+        if data.len() < 5 {
+            // Minimum: compression(1) + checksum(4)
             return Err(Status::corruption("Block too small"));
         }
 
@@ -43,22 +44,32 @@ impl Block {
         // Extract compression type
         let compression = CompressionType::from_u8(data[len - 5])
             .ok_or_else(|| Status::corruption("Invalid compression type"))?;
-        if compression != CompressionType::None {
-            return Err(Status::not_supported("Compression not yet supported"));
+
+        // Decompress if needed
+        let uncompressed = if compression != CompressionType::None {
+            crate::compression::decompress(compression, &data[..len - 5])?
+        } else {
+            data[..len - 5].to_vec()
+        };
+
+        // Now parse the uncompressed block
+        if uncompressed.len() < 4 {
+            return Err(Status::corruption("Uncompressed block too small"));
         }
 
-        // Extract number of restarts
+        // Extract number of restarts (last 4 bytes of uncompressed data)
+        let unc_len = uncompressed.len();
         let num_restarts = u32::from_le_bytes([
-            data[len - 9],
-            data[len - 8],
-            data[len - 7],
-            data[len - 6],
+            uncompressed[unc_len - 4],
+            uncompressed[unc_len - 3],
+            uncompressed[unc_len - 2],
+            uncompressed[unc_len - 1],
         ]);
 
-        let restart_offset = len - 9 - (num_restarts as usize * 4);
+        let restart_offset = unc_len - 4 - (num_restarts as usize * 4);
 
         Ok(Block {
-            data,
+            data: uncompressed,
             restart_offset,
             num_restarts,
         })

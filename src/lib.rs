@@ -1,4 +1,5 @@
 pub mod cache;
+pub mod compression;
 pub mod db;
 pub mod filter;
 pub mod memtable;
@@ -9,4 +10,5 @@ pub mod wal;
 
 pub use db::{DB, DBOptions, ReadOptions, WriteOptions};
 pub use filter::{BloomFilterPolicy, FilterPolicy};
+pub use table::format::CompressionType;
 pub use util::{Result, Slice, Status};
