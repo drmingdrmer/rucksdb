@@ -1,5 +1,7 @@
-use crate::table::format::{CompressionType, calculate_checksum, decode_varint};
-use crate::util::{Result, Slice, Status};
+use crate::{
+    table::format::{CompressionType, calculate_checksum, decode_varint},
+    util::{Result, Slice, Status},
+};
 
 /// Block reader for SSTable data blocks
 ///
@@ -192,7 +194,7 @@ impl<'a> BlockIterator<'a> {
                 self.current_value = value;
                 self.current_offset = next_offset;
                 Ok(true)
-            }
+            },
             Err(_) => Ok(false),
         }
     }

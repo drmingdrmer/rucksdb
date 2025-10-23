@@ -1,6 +1,8 @@
-use crate::util::Slice;
-use crossbeam_skiplist::SkipMap;
 use std::sync::Arc;
+
+use crossbeam_skiplist::SkipMap;
+
+use crate::util::Slice;
 
 pub struct SkipList {
     map: Arc<SkipMap<Vec<u8>, Vec<u8>>>,

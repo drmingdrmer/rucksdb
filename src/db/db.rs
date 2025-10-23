@@ -1,15 +1,23 @@
-use crate::cache::LRUCache;
-use crate::filter::{BloomFilterPolicy, FilterPolicy};
-use crate::memtable::MemTable;
-use crate::table::{CompressionType, TableBuilder, TableReader};
-use crate::util::{Result, Slice, Status};
-use crate::version::{FileMetaData, VersionEdit, VersionSet};
-use crate::wal;
+use std::{
+    fs,
+    path::{Path, PathBuf},
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
+};
+
 use parking_lot::RwLock;
-use std::fs;
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
+
+use crate::{
+    cache::LRUCache,
+    filter::{BloomFilterPolicy, FilterPolicy},
+    memtable::MemTable,
+    table::{CompressionType, TableBuilder, TableReader},
+    util::{Result, Slice, Status},
+    version::{FileMetaData, VersionEdit, VersionSet},
+    wal,
+};
 
 #[derive(Clone, Default)]
 pub struct WriteOptions {
@@ -45,10 +53,11 @@ impl Default for DBOptions {
         DBOptions {
             create_if_missing: true,
             error_if_exists: false,
-            write_buffer_size: 4 * 1024 * 1024,        // 4MB
-            block_cache_size: 1000, // Cache up to 1000 blocks (~4MB with 4KB blocks)
+            write_buffer_size: 4 * 1024 * 1024, // 4MB
+            block_cache_size: 1000,             /* Cache up to 1000 blocks (~4MB with 4KB
+                                                 * blocks) */
             compression_type: CompressionType::Snappy, // Snappy by default
-            filter_bits_per_key: Some(10), // ~1% false positive rate
+            filter_bits_per_key: Some(10),             // ~1% false positive rate
         }
     }
 }
@@ -149,7 +158,8 @@ impl DB {
         Ok(())
     }
 
-    /// Encode WAL record: op_type(1) + seq(8) + key_len(2) + key + [value_len(2) + value]
+    /// Encode WAL record: op_type(1) + seq(8) + key_len(2) + key +
+    /// [value_len(2) + value]
     fn encode_wal_record(seq: u64, key: &Slice, value: Option<&Slice>) -> Vec<u8> {
         let mut buf = Vec::new();
 
@@ -551,8 +561,9 @@ impl DB {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use tempfile::TempDir;
+
+    use super::*;
 
     #[test]
     fn test_db_open() {

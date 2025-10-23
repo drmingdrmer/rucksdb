@@ -1,11 +1,13 @@
-use crate::filter::FilterPolicy;
-use crate::table::block_builder::BlockBuilder;
-use crate::table::format::{BlockHandle, CompressionType, DEFAULT_BLOCK_SIZE, Footer};
-use crate::util::{Result, Slice, Status};
-use std::fs::File;
-use std::io::Write;
-use std::path::Path;
-use std::sync::Arc;
+use std::{fs::File, io::Write, path::Path, sync::Arc};
+
+use crate::{
+    filter::FilterPolicy,
+    table::{
+        block_builder::BlockBuilder,
+        format::{BlockHandle, CompressionType, DEFAULT_BLOCK_SIZE, Footer},
+    },
+    util::{Result, Slice, Status},
+};
 
 /// Table builder for creating SSTable files
 pub struct TableBuilder {
@@ -199,8 +201,9 @@ impl TableBuilder {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use tempfile::NamedTempFile;
+
+    use super::*;
 
     #[test]
     fn test_table_builder_creation() {

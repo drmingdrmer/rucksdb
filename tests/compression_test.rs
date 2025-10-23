@@ -1,5 +1,7 @@
-use rucksdb::Slice;
-use rucksdb::table::{CompressionType, TableBuilder, TableReader};
+use rucksdb::{
+    Slice,
+    table::{CompressionType, TableBuilder, TableReader},
+};
 use tempfile::NamedTempFile;
 
 #[test]

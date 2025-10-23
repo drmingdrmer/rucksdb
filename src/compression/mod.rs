@@ -1,5 +1,7 @@
-use crate::table::format::CompressionType;
-use crate::util::{Result, Status};
+use crate::{
+    table::format::CompressionType,
+    util::{Result, Status},
+};
 
 /// Compress data using the specified compression type
 pub fn compress(compression: CompressionType, data: &[u8]) -> Result<Vec<u8>> {

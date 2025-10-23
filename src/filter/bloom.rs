@@ -9,7 +9,8 @@ pub struct BloomFilterPolicy {
 
 impl BloomFilterPolicy {
     /// Create a new Bloom filter policy
-    /// bits_per_key: Number of bits to use per key (10 gives ~1% false positive rate)
+    /// bits_per_key: Number of bits to use per key (10 gives ~1% false positive
+    /// rate)
     pub fn new(bits_per_key: usize) -> Self {
         BloomFilterPolicy { bits_per_key }
     }

@@ -1,7 +1,7 @@
-use crate::table::format::{
-    CompressionType, DEFAULT_RESTART_INTERVAL, calculate_checksum, encode_varint,
+use crate::{
+    table::format::{CompressionType, DEFAULT_RESTART_INTERVAL, calculate_checksum, encode_varint},
+    util::Slice,
 };
-use crate::util::Slice;
 
 /// Block builder for SSTable data blocks
 ///
@@ -114,11 +114,11 @@ impl BlockBuilder {
                 Ok(data) if data.len() < uncompressed.len() => {
                     // Compression helped, use it
                     (data, compression)
-                }
+                },
                 _ => {
                     // Compression failed or made it larger, use uncompressed
                     (uncompressed, CompressionType::None)
-                }
+                },
             }
         } else {
             (uncompressed, CompressionType::None)

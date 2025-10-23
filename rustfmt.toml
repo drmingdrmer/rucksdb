@@ -1,0 +1,44 @@
+# RucksDB rustfmt configuration
+# This project emphasizes code clarity and educational value
+
+# Edition must match Cargo.toml
+edition = "2024"
+
+# Line width: balance readability vs horizontal space
+max_width = 100
+
+# Imports: grouped and sorted (Rust 2024 default)
+# - std/core first
+# - external crates second
+# - crate/self/super last
+imports_granularity = "Crate"
+group_imports = "StdExternalCrate"
+
+# Function formatting
+fn_params_layout = "Tall"
+fn_single_line = false
+
+# Use blocks: prefer same line for simple cases
+use_small_heuristics = "Default"
+
+# Match: format match arms consistently
+match_block_trailing_comma = true
+
+# Comments: preserve formatting
+comment_width = 80
+wrap_comments = true
+normalize_comments = true
+
+# Trailing commas for better diffs
+trailing_comma = "Vertical"
+
+# Struct formatting
+struct_field_align_threshold = 0
+use_field_init_shorthand = true
+
+# Chain formatting: educational clarity
+chain_width = 60
+indent_style = "Block"
+
+# Stability: only use stable features
+unstable_features = false

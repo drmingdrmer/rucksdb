@@ -1,5 +1,5 @@
-// Enable unstable features for educational purposes and performance optimization
-// These features are only available in nightly Rust
+// Enable unstable features for educational purposes and performance
+// optimization These features are only available in nightly Rust
 #![feature(allocator_api)]
 #![feature(const_trait_impl)]
 

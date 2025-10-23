@@ -1,10 +1,13 @@
-use crate::util::{Result, Status};
-use crate::wal::log_format::{
-    BLOCK_SIZE, HEADER_SIZE, RecordType, calculate_checksum, decode_header,
+use std::{
+    fs::File,
+    io::{Read, Seek, SeekFrom},
+    path::Path,
 };
-use std::fs::File;
-use std::io::{Read, Seek, SeekFrom};
-use std::path::Path;
+
+use crate::{
+    util::{Result, Status},
+    wal::log_format::{BLOCK_SIZE, HEADER_SIZE, RecordType, calculate_checksum, decode_header},
+};
 
 /// WAL Reader
 pub struct Reader {
@@ -44,7 +47,7 @@ impl Reader {
                         return Err(Status::corruption("Incomplete record at end of file"));
                     }
                     return Ok(None);
-                }
+                },
             };
 
             match record_type {
@@ -55,7 +58,7 @@ impl Reader {
                         ));
                     }
                     return Ok(Some(fragment));
-                }
+                },
                 RecordType::First => {
                     if in_fragmented_record {
                         return Err(Status::corruption(
@@ -64,13 +67,13 @@ impl Reader {
                     }
                     self.buffer = fragment;
                     in_fragmented_record = true;
-                }
+                },
                 RecordType::Middle => {
                     if !in_fragmented_record {
                         return Err(Status::corruption("Unexpected Middle record without First"));
                     }
                     self.buffer.extend_from_slice(&fragment);
-                }
+                },
                 RecordType::Last => {
                     if !in_fragmented_record {
                         return Err(Status::corruption("Unexpected Last record without First"));
@@ -79,7 +82,7 @@ impl Reader {
                     let result = self.buffer.clone();
                     self.buffer.clear();
                     return Ok(Some(result));
-                }
+                },
             }
         }
     }
@@ -102,13 +105,13 @@ impl Reader {
             // Read header
             let mut header_buf = [0u8; HEADER_SIZE];
             match self.file.read_exact(&mut header_buf) {
-                Ok(_) => {}
+                Ok(_) => {},
                 Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
                     return Ok(None);
-                }
+                },
                 Err(e) => {
                     return Err(Status::io_error(format!("Read header failed: {e}")));
-                }
+                },
             }
 
             let (checksum, length, record_type) = decode_header(&header_buf)
@@ -155,9 +158,10 @@ impl Reader {
 
 #[cfg(test)]
 mod tests {
+    use tempfile::NamedTempFile;
+
     use super::*;
     use crate::wal::writer::Writer;
-    use tempfile::NamedTempFile;
 
     #[test]
     fn test_read_write_round_trip() {

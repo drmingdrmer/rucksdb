@@ -1,7 +1,12 @@
-use crate::memtable::skiplist::SkipList;
-use crate::util::{Result, Slice, Status};
-use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{
+    Arc,
+    atomic::{AtomicUsize, Ordering},
+};
+
+use crate::{
+    memtable::skiplist::SkipList,
+    util::{Result, Slice, Status},
+};
 
 const VALUE_TYPE_DELETION: u8 = 0;
 const VALUE_TYPE_VALUE: u8 = 1;
@@ -110,14 +115,16 @@ impl MemTable {
         let iter = self.table.iter();
 
         // Seek to the first entry with this user_key
-        // Use sequence u64::MAX (which becomes 0 after reverse) to get the smallest encoded value
-        // This ensures we start from the beginning of all entries for this user_key
+        // Use sequence u64::MAX (which becomes 0 after reverse) to get the smallest
+        // encoded value This ensures we start from the beginning of all entries
+        // for this user_key
         let start_key = InternalKey::new(key.clone(), u64::MAX, VALUE_TYPE_VALUE).encode();
 
         let entries = iter.range_from(&start_key);
 
         // Find the first entry that matches the user_key
-        // Due to reversed sequence encoding, the first matching entry has the largest sequence
+        // Due to reversed sequence encoding, the first matching entry has the largest
+        // sequence
         for (internal_key_data, value) in entries {
             if let Ok(internal_key) = InternalKey::decode(&internal_key_data) {
                 if internal_key.user_key() == key {
@@ -143,7 +150,8 @@ impl MemTable {
         self.table.is_empty()
     }
 
-    /// Collect all unique user keys with their latest values (for flushing to SSTable)
+    /// Collect all unique user keys with their latest values (for flushing to
+    /// SSTable)
     pub fn collect_entries(&self) -> Vec<(Slice, Slice)> {
         let mut result = Vec::new();
         let mut last_user_key: Option<Slice> = None;
@@ -156,7 +164,8 @@ impl MemTable {
             if let Ok(internal_key) = InternalKey::decode(&internal_key_data) {
                 let user_key = internal_key.user_key().clone();
 
-                // Skip if we've already seen this user_key (we want the first/latest entry due to reverse sequence)
+                // Skip if we've already seen this user_key (we want the first/latest entry due
+                // to reverse sequence)
                 if let Some(ref last) = last_user_key
                     && last == &user_key
                 {

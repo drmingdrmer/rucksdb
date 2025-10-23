@@ -1,12 +1,19 @@
-use crate::cache::LRUCache;
-use crate::filter::FilterPolicy;
-use crate::table::block::Block;
-use crate::table::format::{BlockHandle, FOOTER_SIZE, Footer};
-use crate::util::{Result, Slice, Status};
-use std::fs::File;
-use std::io::{Read, Seek, SeekFrom};
-use std::path::Path;
-use std::sync::Arc;
+use std::{
+    fs::File,
+    io::{Read, Seek, SeekFrom},
+    path::Path,
+    sync::Arc,
+};
+
+use crate::{
+    cache::LRUCache,
+    filter::FilterPolicy,
+    table::{
+        block::Block,
+        format::{BlockHandle, FOOTER_SIZE, Footer},
+    },
+    util::{Result, Slice, Status},
+};
 
 /// Table reader for reading SSTable files
 pub struct TableReader {
@@ -237,10 +244,10 @@ impl TableReader {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::table::format::CompressionType;
-    use crate::table::table_builder::TableBuilder;
     use tempfile::NamedTempFile;
+
+    use super::*;
+    use crate::table::{format::CompressionType, table_builder::TableBuilder};
 
     fn build_test_table(entries: &[(&str, &str)]) -> NamedTempFile {
         let temp_file = NamedTempFile::new().unwrap();

@@ -169,7 +169,7 @@ impl VersionEdit {
                         .map_err(|_| Status::corruption("Invalid UTF-8 in comparator"))?;
                     edit.set_comparator(cmp);
                     pos += len;
-                }
+                },
                 2 => {
                     // Log number
                     if pos + 8 > data.len() {
@@ -178,7 +178,7 @@ impl VersionEdit {
                     let num = u64::from_le_bytes(data[pos..pos + 8].try_into().unwrap());
                     edit.set_log_number(num);
                     pos += 8;
-                }
+                },
                 3 => {
                     // Next file number
                     if pos + 8 > data.len() {
@@ -187,7 +187,7 @@ impl VersionEdit {
                     let num = u64::from_le_bytes(data[pos..pos + 8].try_into().unwrap());
                     edit.set_next_file_number(num);
                     pos += 8;
-                }
+                },
                 4 => {
                     // Last sequence
                     if pos + 8 > data.len() {
@@ -196,7 +196,7 @@ impl VersionEdit {
                     let seq = u64::from_le_bytes(data[pos..pos + 8].try_into().unwrap());
                     edit.set_last_sequence(seq);
                     pos += 8;
-                }
+                },
                 5 => {
                     // Deleted file
                     if pos + 9 > data.len() {
@@ -207,7 +207,7 @@ impl VersionEdit {
                     let file_num = u64::from_le_bytes(data[pos..pos + 8].try_into().unwrap());
                     pos += 8;
                     edit.delete_file(level, file_num);
-                }
+                },
                 6 => {
                     // New file
                     if pos + 1 > data.len() {
@@ -260,12 +260,12 @@ impl VersionEdit {
 
                     let file = FileMetaData::new(number, file_size, smallest, largest);
                     edit.add_file(level, file);
-                }
+                },
                 _ => {
                     return Err(Status::corruption(format!(
                         "Unknown tag in VersionEdit: {tag}"
                     )));
-                }
+                },
             }
         }
 

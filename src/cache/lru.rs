@@ -1,7 +1,6 @@
+use std::{collections::HashMap, hash::Hash, sync::Arc};
+
 use parking_lot::Mutex;
-use std::collections::HashMap;
-use std::hash::Hash;
-use std::sync::Arc;
 
 /// A custom LRU (Least Recently Used) cache implementation.
 ///
@@ -68,7 +67,8 @@ impl<K: Clone + Eq + Hash, V: Clone> LRUCache<K, V> {
         }
     }
 
-    /// Gets a value from the cache, updating its position to most recently used.
+    /// Gets a value from the cache, updating its position to most recently
+    /// used.
     ///
     /// Returns None if the key is not found or if the cache is disabled.
     pub fn get(&self, key: &K) -> Option<V> {

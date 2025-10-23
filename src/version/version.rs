@@ -1,5 +1,7 @@
-use crate::util::Slice;
-use crate::version::version_edit::{FileMetaData, NUM_LEVELS};
+use crate::{
+    util::Slice,
+    version::version_edit::{FileMetaData, NUM_LEVELS},
+};
 
 /// A Version represents a snapshot of all SSTables organized by levels
 ///

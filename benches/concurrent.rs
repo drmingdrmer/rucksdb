@@ -1,7 +1,7 @@
+use std::{sync::Arc, thread};
+
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use rucksdb::{DB, DBOptions, Slice, WriteOptions};
-use std::sync::Arc;
-use std::thread;
 use tempfile::TempDir;
 
 fn bench_concurrent_writes(c: &mut Criterion) {

@@ -1,6 +1,9 @@
-use rucksdb::table::{CompressionType, TableBuilder, TableReader};
-use rucksdb::{BloomFilterPolicy, Slice};
 use std::sync::Arc;
+
+use rucksdb::{
+    BloomFilterPolicy, Slice,
+    table::{CompressionType, TableBuilder, TableReader},
+};
 use tempfile::NamedTempFile;
 
 #[test]

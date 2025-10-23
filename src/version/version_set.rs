@@ -1,11 +1,18 @@
-use crate::util::Result;
-use crate::version::version::Version;
-use crate::version::version_edit::VersionEdit;
-use crate::wal;
+use std::{
+    path::{Path, PathBuf},
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
+};
+
 use parking_lot::RwLock;
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
+
+use crate::{
+    util::Result,
+    version::{version::Version, version_edit::VersionEdit},
+    wal,
+};
 
 /// VersionSet manages the chain of versions and applies edits
 ///
@@ -205,10 +212,10 @@ impl VersionSet {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::util::Slice;
-    use crate::version::version_edit::FileMetaData;
     use tempfile::TempDir;
+
+    use super::*;
+    use crate::{util::Slice, version::version_edit::FileMetaData};
 
     #[test]
     fn test_version_set_new() {

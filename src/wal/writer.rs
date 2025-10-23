@@ -1,10 +1,13 @@
-use crate::util::{Result, Status};
-use crate::wal::log_format::{
-    BLOCK_SIZE, HEADER_SIZE, RecordType, calculate_checksum, encode_header,
+use std::{
+    fs::{File, OpenOptions},
+    io::Write,
+    path::Path,
 };
-use std::fs::{File, OpenOptions};
-use std::io::Write;
-use std::path::Path;
+
+use crate::{
+    util::{Result, Status},
+    wal::log_format::{BLOCK_SIZE, HEADER_SIZE, RecordType, calculate_checksum, encode_header},
+};
 
 /// WAL Writer
 pub struct Writer {
@@ -117,8 +120,9 @@ impl Writer {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use tempfile::NamedTempFile;
+
+    use super::*;
 
     #[test]
     fn test_writer_creation() {
