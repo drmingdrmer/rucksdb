@@ -200,11 +200,30 @@ impl<'a> BlockIterator<'a> {
     }
 
     /// Get current key
+    ///
+    /// # Performance Note
+    /// This method clones the key data to return an owned Slice. This is a
+    /// deliberate design trade-off:
+    ///
+    /// **Current approach** (clone on access):
+    /// - Simple API with no lifetime parameters
+    /// - Keys are typically small (< 100 bytes), clone cost is reasonable
+    /// - Clear ownership semantics
+    ///
+    /// **Alternative** (return reference):
+    /// - Would require `key<'a>(&'a self) -> &'a Slice`
+    /// - Complicates API with lifetime parameters
+    /// - Prevents certain usage patterns
+    ///
+    /// For an educational project, API simplicity is prioritized over
+    /// micro-optimizations.
     pub fn key(&self) -> Slice {
         Slice::from(self.current_key.clone())
     }
 
     /// Get current value
+    ///
+    /// Returns a clone of the current value. See `key()` for design rationale.
     pub fn value(&self) -> Slice {
         Slice::from(self.current_value.clone())
     }

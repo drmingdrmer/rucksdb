@@ -127,6 +127,20 @@ impl TableReader {
     }
 
     /// Get a value by key
+    ///
+    /// # Search Algorithm
+    /// 1. **Bloom filter check**: Skip disk I/O if key definitely doesn't exist
+    /// 2. **Index block scan**: Linear search through index entries
+    ///    - Could use binary search with restart points for large tables
+    ///    - Current implementation prioritizes simplicity for education
+    /// 3. **Data block search**: Linear scan within the data block
+    ///
+    /// # Performance Notes
+    /// - Linear scan is acceptable for small/medium index blocks (<1000
+    ///   entries)
+    /// - For production systems with large tables, binary search would be
+    ///   better
+    /// - Block cache reduces repeated block reads
     pub fn get(&mut self, key: &Slice) -> Result<Option<Slice>> {
         // Check filter first to avoid unnecessary disk I/O
         if let (Some(policy), Some(filter_data)) = (&self.filter_policy, &self.filter_data)
