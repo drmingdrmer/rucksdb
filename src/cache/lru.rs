@@ -1,28 +1,33 @@
 use parking_lot::Mutex;
-use std::collections::HashMap;
+use std::hash::Hash;
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 
 /// LRU Cache with fixed capacity
-/// Uses HashMap for O(1) lookup and doubly-linked list for O(1) eviction
-pub struct LRUCache<K: Clone + Eq + std::hash::Hash, V: Clone> {
-    capacity: usize,
+/// Uses the lru crate which implements O(1) get/insert/eviction
+pub struct LRUCache<K: Clone + Eq + Hash, V: Clone> {
     cache: Arc<Mutex<LRUCacheInner<K, V>>>,
+    capacity: usize,
 }
 
-struct LRUCacheInner<K: Clone + Eq + std::hash::Hash, V: Clone> {
-    map: HashMap<K, (V, usize)>, // Key -> (Value, access_order)
-    access_order: usize,
+struct LRUCacheInner<K: Clone + Eq + Hash, V: Clone> {
+    lru: Option<lru::LruCache<K, V>>, // None means cache is disabled
     hits: u64,
     misses: u64,
 }
 
-impl<K: Clone + Eq + std::hash::Hash, V: Clone> LRUCache<K, V> {
+impl<K: Clone + Eq + Hash, V: Clone> LRUCache<K, V> {
     pub fn new(capacity: usize) -> Self {
+        let lru = if capacity > 0 {
+            Some(lru::LruCache::new(NonZeroUsize::new(capacity).unwrap()))
+        } else {
+            None
+        };
+
         LRUCache {
             capacity,
             cache: Arc::new(Mutex::new(LRUCacheInner {
-                map: HashMap::new(),
-                access_order: 0,
+                lru,
                 hits: 0,
                 misses: 0,
             })),
@@ -33,85 +38,62 @@ impl<K: Clone + Eq + std::hash::Hash, V: Clone> LRUCache<K, V> {
     pub fn get(&self, key: &K) -> Option<V> {
         let mut inner = self.cache.lock();
 
-        // First check if key exists
-        if !inner.map.contains_key(key) {
-            inner.misses += 1;
-            return None;
-        }
-
-        // Update access order
-        inner.access_order += 1;
-        let new_order = inner.access_order;
-        inner.hits += 1;
-
-        // Get value and update order
-        if let Some((value, order)) = inner.map.get_mut(key) {
-            *order = new_order;
-            Some(value.clone())
+        let result = inner.lru.as_mut().and_then(|lru| lru.get(key).cloned());
+        if result.is_some() {
+            inner.hits += 1;
         } else {
-            None
+            inner.misses += 1;
         }
+        result
     }
 
     /// Insert a value into the cache
     pub fn insert(&self, key: K, value: V) {
         let mut inner = self.cache.lock();
-
-        inner.access_order += 1;
-        let new_order = inner.access_order;
-
-        // If already exists, just update
-        if let std::collections::hash_map::Entry::Occupied(mut e) = inner.map.entry(key.clone()) {
-            e.insert((value, new_order));
-            return;
+        if let Some(lru) = &mut inner.lru {
+            lru.put(key, value);
         }
-
-        // Evict if at capacity
-        if inner.map.len() >= self.capacity {
-            // Find LRU item (smallest access_order)
-            if let Some(lru_key) = inner
-                .map
-                .iter()
-                .min_by_key(|(_, (_, order))| order)
-                .map(|(k, _)| k.clone())
-            {
-                inner.map.remove(&lru_key);
-            }
-        }
-
-        inner.map.insert(key, (value, new_order));
     }
 
     /// Clear all entries
     pub fn clear(&self) {
         let mut inner = self.cache.lock();
-        inner.map.clear();
-        inner.access_order = 0;
+        if let Some(lru) = &mut inner.lru {
+            lru.clear();
+        }
     }
 
     /// Get cache statistics
     pub fn stats(&self) -> CacheStats {
         let inner = self.cache.lock();
+        let (entries, capacity) = if let Some(lru) = &inner.lru {
+            (lru.len(), lru.cap().get())
+        } else {
+            (0, 0)
+        };
+
         CacheStats {
             hits: inner.hits,
             misses: inner.misses,
-            entries: inner.map.len(),
-            capacity: self.capacity,
+            entries,
+            capacity,
         }
     }
 
     /// Get current size
     pub fn len(&self) -> usize {
-        self.cache.lock().map.len()
+        let inner = self.cache.lock();
+        inner.lru.as_ref().map_or(0, |lru| lru.len())
     }
 
     /// Check if empty
     pub fn is_empty(&self) -> bool {
-        self.cache.lock().map.is_empty()
+        let inner = self.cache.lock();
+        inner.lru.as_ref().is_none_or(|lru| lru.is_empty())
     }
 }
 
-impl<K: Clone + Eq + std::hash::Hash, V: Clone> Clone for LRUCache<K, V> {
+impl<K: Clone + Eq + Hash, V: Clone> Clone for LRUCache<K, V> {
     fn clone(&self) -> Self {
         LRUCache {
             capacity: self.capacity,
@@ -229,5 +211,18 @@ mod tests {
 
         assert_eq!(cache.len(), 0);
         assert_eq!(cache.get(&"key1"), None);
+    }
+
+    #[test]
+    fn test_lru_cache_disabled() {
+        let cache = LRUCache::new(0);
+
+        // Insert should be no-op
+        cache.insert("key1", "value1");
+        assert_eq!(cache.get(&"key1"), None);
+        assert_eq!(cache.len(), 0);
+
+        let stats = cache.stats();
+        assert_eq!(stats.capacity, 0);
     }
 }
