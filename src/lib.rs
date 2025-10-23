@@ -1,5 +1,6 @@
 pub mod db;
 pub mod memtable;
+pub mod table;
 pub mod util;
 pub mod wal;
 
