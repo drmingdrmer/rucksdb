@@ -239,6 +239,7 @@ impl TableReader {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::table::format::CompressionType;
     use crate::table::table_builder::TableBuilder;
     use tempfile::NamedTempFile;
 
@@ -252,7 +253,7 @@ mod tests {
                 .unwrap();
         }
 
-        builder.finish().unwrap();
+        builder.finish(CompressionType::None).unwrap();
         temp_file
     }
 
@@ -310,7 +311,7 @@ mod tests {
                     .unwrap();
             }
 
-            builder.finish().unwrap();
+            builder.finish(CompressionType::None).unwrap();
             temp_file
         };
 

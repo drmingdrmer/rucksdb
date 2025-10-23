@@ -1,4 +1,4 @@
-use rucksdb::table::{TableBuilder, TableReader};
+use rucksdb::table::{CompressionType, TableBuilder, TableReader};
 use rucksdb::Slice;
 use tempfile::NamedTempFile;
 
@@ -16,7 +16,7 @@ fn test_no_compression() {
             builder.add(&Slice::from(key), &Slice::from(value)).unwrap();
         }
 
-        builder.finish().unwrap();
+        builder.finish(CompressionType::None).unwrap();
     }
 
     // Read table
@@ -48,7 +48,7 @@ fn test_snappy_compression() {
             builder.add(&Slice::from(key), &Slice::from(value)).unwrap();
         }
 
-        builder.finish().unwrap();
+        builder.finish(CompressionType::Snappy).unwrap();
     }
 
     // Read table
@@ -83,7 +83,7 @@ fn test_lz4_compression() {
             builder.add(&Slice::from(key), &Slice::from(value)).unwrap();
         }
 
-        builder.finish().unwrap();
+        builder.finish(CompressionType::Lz4).unwrap();
     }
 
     // Read table
@@ -121,7 +121,7 @@ fn test_compression_with_varied_data() {
             builder.add(&Slice::from(key), &Slice::from(value)).unwrap();
         }
 
-        builder.finish().unwrap();
+        builder.finish(CompressionType::None).unwrap();
     }
 
     // Read and verify
@@ -158,7 +158,7 @@ fn test_large_values_compression() {
             builder.add(&Slice::from(key), &Slice::from(value)).unwrap();
         }
 
-        builder.finish().unwrap();
+        builder.finish(CompressionType::None).unwrap();
     }
 
     // Read and verify

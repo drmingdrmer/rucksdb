@@ -20,6 +20,7 @@ fn bench_concurrent_writes(c: &mut Criterion) {
                         error_if_exists: false,
                         write_buffer_size: 4 * 1024 * 1024,
                         block_cache_size: 1000,
+                        ..Default::default()
                     };
                     let db =
                         Arc::new(DB::open(temp_dir.path().to_str().unwrap(), options).unwrap());
@@ -66,6 +67,7 @@ fn bench_flush_impact(c: &mut Criterion) {
                 error_if_exists: false,
                 write_buffer_size: 1024 * 1024, // Smaller buffer to trigger flush
                 block_cache_size: 100,
+                ..Default::default()
             };
             let db = Arc::new(DB::open(temp_dir.path().to_str().unwrap(), options).unwrap());
 

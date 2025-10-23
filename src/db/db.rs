@@ -1,6 +1,7 @@
 use crate::cache::LRUCache;
+use crate::filter::{BloomFilterPolicy, FilterPolicy};
 use crate::memtable::MemTable;
-use crate::table::{TableBuilder, TableReader};
+use crate::table::{CompressionType, TableBuilder, TableReader};
 use crate::util::{Result, Slice, Status};
 use crate::version::{FileMetaData, VersionEdit, VersionSet};
 use crate::wal;
@@ -34,7 +35,9 @@ pub struct DBOptions {
     pub create_if_missing: bool,
     pub error_if_exists: bool,
     pub write_buffer_size: usize,
-    pub block_cache_size: usize, // Number of blocks to cache
+    pub block_cache_size: usize,            // Number of blocks to cache
+    pub compression_type: CompressionType,  // Compression algorithm for blocks
+    pub filter_bits_per_key: Option<usize>, // Bloom filter bits per key (None = disabled)
 }
 
 impl Default for DBOptions {
@@ -42,8 +45,10 @@ impl Default for DBOptions {
         DBOptions {
             create_if_missing: true,
             error_if_exists: false,
-            write_buffer_size: 4 * 1024 * 1024, // 4MB
-            block_cache_size: 1000,             // Cache up to 1000 blocks (~4MB with 4KB blocks)
+            write_buffer_size: 4 * 1024 * 1024,        // 4MB
+            block_cache_size: 1000, // Cache up to 1000 blocks (~4MB with 4KB blocks)
+            compression_type: CompressionType::Snappy, // Snappy by default
+            filter_bits_per_key: Some(10), // ~1% false positive rate
         }
     }
 }
@@ -338,12 +343,12 @@ impl DB {
         };
         let sst_path = self.db_path.join(format!("{file_num:06}.sst"));
 
-        // Build SSTable
-        let mut builder = TableBuilder::new(&sst_path)?;
+        // Build SSTable with configured compression and filter
+        let mut builder = self.create_table_builder(&sst_path)?;
         for (key, value) in &entries {
             builder.add(key, value)?;
         }
-        builder.finish()?;
+        builder.finish(self.options.compression_type)?;
 
         // Get file size and key range
         let file_size = std::fs::metadata(&sst_path)
@@ -389,6 +394,15 @@ impl DB {
         // Only return true if imm is empty (no flush in progress)
         let imm = self.imm.read();
         imm.is_none()
+    }
+
+    /// Create a TableBuilder with configured compression and filter options
+    fn create_table_builder<P: AsRef<Path>>(&self, path: P) -> Result<TableBuilder> {
+        let filter_policy = self.options.filter_bits_per_key.map(|bits_per_key| {
+            Arc::new(BloomFilterPolicy::new(bits_per_key)) as Arc<dyn FilterPolicy>
+        });
+
+        TableBuilder::new_with_filter(path, filter_policy)
     }
 
     /// Move current MemTable to immutable and create new one
@@ -467,11 +481,11 @@ impl DB {
         };
         let sst_path = self.db_path.join(format!("{file_num:06}.sst"));
 
-        let mut builder = TableBuilder::new(&sst_path)?;
+        let mut builder = self.create_table_builder(&sst_path)?;
         for (key, value) in &merged {
             builder.add(key, value)?;
         }
-        builder.finish()?;
+        builder.finish(self.options.compression_type)?;
 
         // Get file size and key range
         let file_size = std::fs::metadata(&sst_path)

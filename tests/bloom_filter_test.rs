@@ -1,4 +1,4 @@
-use rucksdb::table::{TableBuilder, TableReader};
+use rucksdb::table::{CompressionType, TableBuilder, TableReader};
 use rucksdb::{BloomFilterPolicy, Slice};
 use std::sync::Arc;
 use tempfile::NamedTempFile;
@@ -19,7 +19,7 @@ fn test_bloom_filter_with_sstable() {
             builder.add(&Slice::from(key), &Slice::from(value)).unwrap();
         }
 
-        builder.finish().unwrap();
+        builder.finish(CompressionType::None).unwrap();
     }
 
     // Read table with filter
@@ -74,7 +74,7 @@ fn test_sstable_without_filter() {
             builder.add(&Slice::from(key), &Slice::from(value)).unwrap();
         }
 
-        builder.finish().unwrap();
+        builder.finish(CompressionType::None).unwrap();
     }
 
     // Read table without filter
@@ -110,7 +110,7 @@ fn test_filter_effectiveness() {
             builder.add(&Slice::from(key), &Slice::from(value)).unwrap();
         }
 
-        builder.finish().unwrap();
+        builder.finish(CompressionType::None).unwrap();
     }
 
     // Test filter effectiveness

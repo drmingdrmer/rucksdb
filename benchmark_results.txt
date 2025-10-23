@@ -1,0 +1,8 @@
+   Compiling rucksdb v0.1.0 (/Users/drdrxp/xp/vcs/github.com/drmingdrmer/rucksdb)
+    Finished `bench` profile [optimized] target(s) in 0.86s
+     Running benches/basic_ops.rs (target/release/deps/basic_ops-7b96d05961c7e7f2)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

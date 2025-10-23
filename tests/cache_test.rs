@@ -12,6 +12,7 @@ fn test_block_cache_hit_rate() {
         error_if_exists: false,
         write_buffer_size: 1024, // 1KB to trigger flush quickly
         block_cache_size: 100,   // Small cache to test eviction
+        ..Default::default()
     };
 
     let db = DB::open(db_path.to_str().unwrap(), options).unwrap();
@@ -91,6 +92,7 @@ fn test_cache_eviction() {
         error_if_exists: false,
         write_buffer_size: 1024,
         block_cache_size: 5, // Very small cache - only 5 blocks
+        ..Default::default()
     };
 
     let db = DB::open(db_path.to_str().unwrap(), options).unwrap();
@@ -135,6 +137,7 @@ fn test_cache_disabled() {
         error_if_exists: false,
         write_buffer_size: 1024,
         block_cache_size: 0,
+        ..Default::default()
     };
 
     let db = DB::open(db_path.to_str().unwrap(), options).unwrap();

@@ -12,6 +12,7 @@ fn test_manual_compaction() {
         error_if_exists: false,
         write_buffer_size: 1024, // 1KB to trigger flush quickly
         block_cache_size: 1000,
+        ..Default::default()
     };
 
     let db = DB::open(db_path.to_str().unwrap(), options).unwrap();
@@ -60,6 +61,7 @@ fn test_compaction_with_overwrites() {
         error_if_exists: false,
         write_buffer_size: 1024,
         block_cache_size: 1000,
+        ..Default::default()
     };
 
     let db = DB::open(db_path.to_str().unwrap(), options).unwrap();
@@ -129,6 +131,7 @@ fn test_compaction_with_deletes() {
         error_if_exists: false,
         write_buffer_size: 1024,
         block_cache_size: 1000,
+        ..Default::default()
     };
 
     let db = DB::open(db_path.to_str().unwrap(), options).unwrap();

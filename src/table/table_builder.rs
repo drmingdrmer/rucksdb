@@ -1,6 +1,6 @@
 use crate::filter::FilterPolicy;
 use crate::table::block_builder::BlockBuilder;
-use crate::table::format::{BlockHandle, Footer, DEFAULT_BLOCK_SIZE};
+use crate::table::format::{BlockHandle, CompressionType, Footer, DEFAULT_BLOCK_SIZE};
 use crate::util::{Result, Slice, Status};
 use std::fs::File;
 use std::io::Write;
@@ -20,6 +20,7 @@ pub struct TableBuilder {
     pending_handle: BlockHandle,
     filter_policy: Option<Arc<dyn FilterPolicy>>,
     filter_keys: Vec<Vec<u8>>, // Keys to build filter from
+    compression_type: CompressionType,
 }
 
 impl TableBuilder {
@@ -48,6 +49,7 @@ impl TableBuilder {
             pending_handle: BlockHandle::new(0, 0),
             filter_policy,
             filter_keys: Vec::new(),
+            compression_type: CompressionType::None, // Default, will be set in finish()
         })
     }
 
@@ -93,7 +95,9 @@ impl TableBuilder {
             return Ok(());
         }
 
-        let block_data = self.data_block.finish();
+        let block_data = self
+            .data_block
+            .finish_with_compression(self.compression_type);
         let block_size = block_data.len();
 
         // Write block to file
@@ -111,8 +115,11 @@ impl TableBuilder {
         Ok(())
     }
 
-    /// Finish building the table
-    pub fn finish(&mut self) -> Result<()> {
+    /// Finish building the table with specified compression
+    pub fn finish(&mut self, compression: CompressionType) -> Result<()> {
+        // Set compression type
+        self.compression_type = compression;
+
         // Flush any pending data block
         self.flush_data_block()?;
 
@@ -210,7 +217,7 @@ mod tests {
         builder
             .add(&Slice::from("key1"), &Slice::from("value1"))
             .unwrap();
-        builder.finish().unwrap();
+        builder.finish(CompressionType::None).unwrap();
 
         assert_eq!(builder.num_entries(), 1);
         assert!(builder.file_size() > 0);
@@ -227,7 +234,7 @@ mod tests {
             builder.add(&Slice::from(key), &Slice::from(value)).unwrap();
         }
 
-        builder.finish().unwrap();
+        builder.finish(CompressionType::None).unwrap();
         assert_eq!(builder.num_entries(), 100);
     }
 
@@ -246,7 +253,7 @@ mod tests {
             .add(&Slice::from("ccc"), &Slice::from("v3"))
             .unwrap();
 
-        builder.finish().unwrap();
+        builder.finish(CompressionType::None).unwrap();
         assert_eq!(builder.num_entries(), 3);
     }
 

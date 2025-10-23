@@ -9,6 +9,7 @@ fn setup_db() -> (DB, TempDir) {
         error_if_exists: false,
         write_buffer_size: 4 * 1024 * 1024,
         block_cache_size: 1000,
+        ..Default::default()
     };
     let db = DB::open(temp_dir.path().to_str().unwrap(), options).unwrap();
     (db, temp_dir)
