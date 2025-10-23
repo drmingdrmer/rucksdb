@@ -1,8 +1,11 @@
 use rucksdb::{DBOptions, ReadOptions, Slice, WriteOptions, DB};
+use tempfile::TempDir;
 
 #[test]
 fn test_basic_operations() {
-    let db = DB::open("test_db", DBOptions::default()).unwrap();
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("test_db");
+    let db = DB::open(db_path.to_str().unwrap(), DBOptions::default()).unwrap();
 
     db.put(
         &WriteOptions::default(),
@@ -31,7 +34,9 @@ fn test_basic_operations() {
 
 #[test]
 fn test_update_value() {
-    let db = DB::open("test_db", DBOptions::default()).unwrap();
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("test_db");
+    let db = DB::open(db_path.to_str().unwrap(), DBOptions::default()).unwrap();
 
     db.put(
         &WriteOptions::default(),
@@ -56,7 +61,9 @@ fn test_update_value() {
 
 #[test]
 fn test_nonexistent_key() {
-    let db = DB::open("test_db", DBOptions::default()).unwrap();
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("test_db");
+    let db = DB::open(db_path.to_str().unwrap(), DBOptions::default()).unwrap();
 
     let val = db
         .get(&ReadOptions::default(), &Slice::from("nonexistent"))
@@ -66,7 +73,9 @@ fn test_nonexistent_key() {
 
 #[test]
 fn test_many_keys() {
-    let db = DB::open("test_db", DBOptions::default()).unwrap();
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("test_db");
+    let db = DB::open(db_path.to_str().unwrap(), DBOptions::default()).unwrap();
 
     for i in 0..1000 {
         let key = format!("key{}", i);

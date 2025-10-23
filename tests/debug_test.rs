@@ -1,8 +1,11 @@
 use rucksdb::{DBOptions, ReadOptions, Slice, WriteOptions, DB};
+use tempfile::TempDir;
 
 #[test]
 fn test_string_ordering() {
-    let db = DB::open("test_db", DBOptions::default()).unwrap();
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("test_db");
+    let db = DB::open(db_path.to_str().unwrap(), DBOptions::default()).unwrap();
 
     db.put(
         &WriteOptions::default(),

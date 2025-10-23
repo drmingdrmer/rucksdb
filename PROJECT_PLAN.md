@@ -15,13 +15,13 @@ Complete Rust reimplementation of RocksDB with all core features and optimizatio
 | Phase | Status | Completion | Duration |
 |-------|--------|-----------|----------|
 | Phase 1: Foundation | ✅ Complete | 100% | 1 day |
-| Phase 2: LSM-Tree Core | 🔄 Next | 0% | 4-6 weeks |
+| Phase 2: LSM-Tree Core | 🔄 In Progress | 25% (WAL done) | 4-6 weeks |
 | Phase 3: Performance | ⏳ Planned | 0% | 3-4 weeks |
 | Phase 4: Advanced Features | ⏳ Planned | 0% | 4-6 weeks |
 | Phase 5: Stability | ⏳ Planned | 0% | Ongoing |
 
-**Total Lines of Code**: 834 lines
-**Total Tests**: 26 (all passing)
+**Total Lines of Code**: 1554 lines (+720)
+**Total Tests**: 43 (all passing, +17)
 
 ---
 
@@ -98,26 +98,31 @@ Build basic infrastructure and minimal viable KV storage.
 ### Objectives
 Implement persistent storage with LSM-Tree architecture.
 
-### 2.1 Write Ahead Log (WAL) ⏳
-**Priority**: High | **Estimated**: 1 week
+### 2.1 Write Ahead Log (WAL) ✅ COMPLETED (2025-10-23)
+**Priority**: High | **Actual**: 1 session
 
-- [ ] WAL file format design
-  - [ ] Record format (checksum, length, type, data)
-  - [ ] Batch write support
-- [ ] WAL Writer
-  - [ ] Sequential write to log file
-  - [ ] Sync options
-  - [ ] Rotation support
-- [ ] WAL Reader
-  - [ ] Sequential read
-  - [ ] Corruption detection
-  - [ ] Recovery logic
-- [ ] Integration with DB
-  - [ ] Write to WAL before MemTable
-  - [ ] Crash recovery on open
-- [ ] **Tests**: WAL write/read, corruption recovery, crash simulation
+- [x] WAL file format design
+  - [x] Record format (checksum, length, type, data)
+  - [x] Block-based storage (32KB blocks)
+  - [x] Record fragmentation across blocks
+- [x] WAL Writer
+  - [x] Sequential write to log file
+  - [x] Sync options
+  - [x] CRC32 checksums
+- [x] WAL Reader
+  - [x] Sequential read
+  - [x] Corruption detection
+  - [x] Recovery logic with fragment reassembly
+- [x] Integration with DB
+  - [x] Write to WAL before MemTable
+  - [x] Crash recovery on open
+  - [x] WAL record encoding/decoding
+- [x] **Tests**: 17 tests (WAL write/read, corruption, crash recovery with 1000+ keys)
 
-**Deliverable**: Crash-safe writes with WAL
+**Commit**: `xxxxxxx` - Implement WAL with crash recovery
+**Files Added**: 4 files (log_format, writer, reader, wal_recovery_test)
+**LOC Added**: ~720 lines
+**Deliverable**: ✅ Crash-safe writes with WAL
 
 ---
 
@@ -340,11 +345,17 @@ Implement persistent storage with LSM-Tree architecture.
 
 ## Technical Decisions Log
 
-### 2025-10-23
+### 2025-10-23 - Phase 1
 - **SkipList**: Use `crossbeam-skiplist` for lock-free concurrent access
 - **InternalKey encoding**: Add 0x00 separator to prevent key prefix issues
 - **Sequence encoding**: Use `u64::MAX - sequence` for descending order
 - **Concurrency**: Use `parking_lot::RwLock` for better performance
+
+### 2025-10-23 - Phase 2.1 WAL
+- **WAL Format**: 32KB blocks with CRC32 checksums, support record fragmentation
+- **Record Types**: Full, First, Middle, Last for handling large records
+- **Recovery**: Read all WAL records on DB open and rebuild MemTable
+- **Testing**: Use `tempfile::TempDir` to avoid test pollution
 
 ---
 
@@ -353,12 +364,13 @@ Implement persistent storage with LSM-Tree architecture.
 ### Immediate (Next Session)
 1. ✅ Commit Phase 1 code
 2. ✅ Create project plan document
-3. ⏳ Start Phase 2.1: WAL implementation
+3. ✅ Complete Phase 2.1: WAL implementation
+4. ⏳ Start Phase 2.2: SSTable implementation
 
 ### This Week
-- Complete WAL Writer and Reader
-- Implement crash recovery
-- Write comprehensive WAL tests
+- Complete SSTable Block format
+- Implement Table Builder
+- Implement Table Reader
 
 ### This Month
 - Complete Phase 2 (LSM-Tree Core)
@@ -398,5 +410,5 @@ Commit message format:
 
 ---
 
-**Last Updated**: 2025-10-23
-**Next Review**: After Phase 2.1 completion
+**Last Updated**: 2025-10-23 (Phase 2.1 Complete)
+**Next Review**: After Phase 2.2 completion
