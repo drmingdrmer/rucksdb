@@ -105,6 +105,15 @@ pub trait Iterator {
     /// - Iterator has reached the end
     /// - An error occurred
     fn valid(&self) -> bool;
+
+    /// Check if current entry is a deletion marker
+    ///
+    /// Prerequisite: valid() == true
+    /// Returns true if current entry represents a deleted key
+    /// Default implementation returns false (no deletions)
+    fn is_deletion(&self) -> bool {
+        false
+    }
 }
 
 mod memtable_iterator;

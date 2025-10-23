@@ -821,13 +821,7 @@ mod tests {
             .unwrap();
         assert_eq!(key2_value, None, "key2 should be deleted");
 
-        // TODO: Known issue - iterator shows old values for deleted keys
-        // The get() API correctly returns None for deleted keys, but the iterator
-        // currently shows the pre-deletion value. This needs to be fixed by ensuring
-        // the MemTableIterator properly handles deletion markers when created from
-        // DB::iter().
-        //
-        // For now, we just verify the iterator returns all keys in sorted order
+        // Verify iterator also filters deleted keys
         let mut iter = db.iter().unwrap();
         assert!(iter.seek_to_first().unwrap());
 
@@ -839,10 +833,13 @@ mod tests {
             }
         }
 
-        // Verify keys are in sorted order (deletion filtering to be fixed)
-        assert_eq!(collected.len(), 3);
+        // Should only see key1 and key3, not the deleted key2
+        assert_eq!(
+            collected.len(),
+            2,
+            "Should only have 2 entries (key2 deleted)"
+        );
         assert_eq!(collected[0], (Slice::from("key1"), Slice::from("value1")));
-        assert_eq!(collected[1], (Slice::from("key2"), Slice::from("value2")));
-        assert_eq!(collected[2], (Slice::from("key3"), Slice::from("value3")));
+        assert_eq!(collected[1], (Slice::from("key3"), Slice::from("value3")));
     }
 }

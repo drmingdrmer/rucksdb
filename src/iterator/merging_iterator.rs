@@ -107,16 +107,61 @@ impl MergingIterator {
     }
 
     /// Update current key/value from the top of the heap
+    /// Skips deletion markers to only expose real values
     fn update_current(&mut self) -> Result<bool> {
-        if let Some(entry) = self.heap.peek() {
-            let iter = &self.iterators[entry.index];
-            self.current_key = Some(iter.key());
-            self.current_value = Some(iter.value());
-            self.valid = true;
-            Ok(true)
-        } else {
-            self.valid = false;
-            Ok(false)
+        loop {
+            if let Some(entry) = self.heap.peek() {
+                let is_deletion = self.iterators[entry.index].is_deletion();
+
+                // Skip deletion markers
+                if is_deletion {
+                    // Remove this deletion marker and ALL entries with same user key
+                    let deleted_key = entry.key.clone();
+
+                    // Find all iterators with this key
+                    let entries_to_advance: Vec<usize> = self
+                        .heap
+                        .iter()
+                        .filter(|e| e.key.data() == deleted_key.data())
+                        .map(|e| e.index)
+                        .collect();
+
+                    for idx in entries_to_advance {
+                        // Remove from heap
+                        self.heap.retain(|e| e.index != idx);
+
+                        // Keep advancing this iterator until user key changes
+                        loop {
+                            if !self.iterators[idx].next()? {
+                                break; // Iterator exhausted
+                            }
+
+                            let current_key = self.iterators[idx].key();
+                            if current_key.data() != deleted_key.data() {
+                                // Different user key - add back to heap
+                                self.heap.push(HeapEntry {
+                                    key: current_key,
+                                    index: idx,
+                                });
+                                break;
+                            }
+                            // Same user key - keep advancing to skip old
+                            // versions
+                        }
+                    }
+                    continue; // Check next entry
+                }
+
+                // Not a deletion - return this entry
+                let idx = entry.index;
+                self.current_key = Some(self.iterators[idx].key());
+                self.current_value = Some(self.iterators[idx].value());
+                self.valid = true;
+                return Ok(true);
+            } else {
+                self.valid = false;
+                return Ok(false);
+            }
         }
     }
 }

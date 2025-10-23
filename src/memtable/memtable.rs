@@ -15,7 +15,7 @@ pub const VALUE_TYPE_VALUE: u8 = 1;
 pub struct InternalKey {
     user_key: Slice,
     sequence: u64,
-    value_type: u8,
+    pub value_type: u8,
 }
 
 impl InternalKey {

@@ -12,7 +12,7 @@ use crate::{
 ///
 /// Wraps the SkipList iterator and handles:
 /// - InternalKey decoding
-/// - Deletion markers (skipped automatically)
+/// - Deletion marker detection (exposed via is_deletion())
 /// - User key extraction
 ///
 /// # Implementation Notes
@@ -20,10 +20,14 @@ use crate::{
 /// The crossbeam_skiplist iterator is used indirectly through range queries.
 /// We maintain the current position and use range() to get the next/previous
 /// elements.
+///
+/// Deletion markers are exposed to allow proper merging with other iterators.
+/// The MergingIterator will filter them from final results.
 pub struct MemTableIterator {
     map: Arc<SkipMap<Vec<u8>, Vec<u8>>>,
     current_key: Option<Vec<u8>>,
     current_value: Option<Vec<u8>>,
+    current_is_deletion: bool,
     valid: bool,
 }
 
@@ -33,11 +37,12 @@ impl MemTableIterator {
             map,
             current_key: None,
             current_value: None,
+            current_is_deletion: false,
             valid: false,
         }
     }
 
-    /// Advance to next entry, skipping deletions
+    /// Advance to next entry (including deletion markers)
     fn advance_forward(&mut self) -> Result<bool> {
         let start_key = if let Some(ref key) = self.current_key {
             // Find next key after current
@@ -50,35 +55,30 @@ impl MemTableIterator {
             vec![]
         };
 
-        // Iterate through SkipMap starting from start_key
-        for entry in self.map.range(start_key..) {
+        // Get next entry from SkipMap
+        if let Some(entry) = self.map.range(start_key..).next() {
             let internal_slice = Slice::from(entry.key().clone());
             let internal_key = InternalKey::decode(&internal_slice)?;
 
-            if internal_key.is_deletion() {
-                // Skip deletion markers
-                self.current_key = Some(entry.key().clone());
-                continue;
-            }
-
-            // Found valid entry
+            // Store entry (including deletion markers)
             self.current_key = Some(entry.key().clone());
             self.current_value = Some(entry.value().clone());
+            self.current_is_deletion = internal_key.is_deletion();
             self.valid = true;
-            return Ok(true);
+            Ok(true)
+        } else {
+            // Reached end
+            self.valid = false;
+            Ok(false)
         }
-
-        // Reached end
-        self.valid = false;
-        Ok(false)
     }
 
-    /// Move to previous entry, skipping deletions
+    /// Move to previous entry (including deletion markers)
     fn advance_backward(&mut self) -> Result<bool> {
         if let Some(ref key) = self.current_key {
             // Need to scan from beginning to find previous
             // This is inefficient but crossbeam_skiplist doesn't support reverse iteration
-            let mut last_valid: Option<(Vec<u8>, Vec<u8>)> = None;
+            let mut last_valid: Option<(Vec<u8>, Vec<u8>, bool)> = None;
 
             for entry in self.map.iter() {
                 if entry.key() >= key {
@@ -88,14 +88,18 @@ impl MemTableIterator {
                 let internal_slice = Slice::from(entry.key().clone());
                 let internal_key = InternalKey::decode(&internal_slice)?;
 
-                if !internal_key.is_deletion() {
-                    last_valid = Some((entry.key().clone(), entry.value().clone()));
-                }
+                // Store all entries including deletion markers
+                last_valid = Some((
+                    entry.key().clone(),
+                    entry.value().clone(),
+                    internal_key.is_deletion(),
+                ));
             }
 
-            if let Some((key, value)) = last_valid {
+            if let Some((key, value, is_deletion)) = last_valid {
                 self.current_key = Some(key);
                 self.current_value = Some(value);
+                self.current_is_deletion = is_deletion;
                 self.valid = true;
                 Ok(true)
             } else {
@@ -130,21 +134,25 @@ impl Iterator for MemTableIterator {
     }
 
     fn seek_to_last(&mut self) -> Result<bool> {
-        // Find last valid entry
-        let mut last_valid: Option<(Vec<u8>, Vec<u8>)> = None;
+        // Find last entry (including deletion markers)
+        let mut last_entry: Option<(Vec<u8>, Vec<u8>, bool)> = None;
 
         for entry in self.map.iter() {
             let internal_slice = Slice::from(entry.key().clone());
             let internal_key = InternalKey::decode(&internal_slice)?;
 
-            if !internal_key.is_deletion() {
-                last_valid = Some((entry.key().clone(), entry.value().clone()));
-            }
+            // Store all entries including deletion markers
+            last_entry = Some((
+                entry.key().clone(),
+                entry.value().clone(),
+                internal_key.is_deletion(),
+            ));
         }
 
-        if let Some((key, value)) = last_valid {
+        if let Some((key, value, is_deletion)) = last_entry {
             self.current_key = Some(key);
             self.current_value = Some(value);
+            self.current_is_deletion = is_deletion;
             self.valid = true;
             Ok(true)
         } else {
@@ -161,23 +169,19 @@ impl Iterator for MemTableIterator {
 
         self.current_key = None;
         self.current_value = None;
+        self.current_is_deletion = false;
         self.valid = false;
 
-        // Find first key >= target
+        // Find first key >= target (including deletion markers)
         for entry in self.map.range(target_encoded.data().to_vec()..) {
             let internal_slice = Slice::from(entry.key().clone());
             let internal_key = InternalKey::decode(&internal_slice)?;
 
             // Check if user key matches or is greater
             if internal_key.user_key() >= target {
-                if internal_key.is_deletion() {
-                    // Skip deletions
-                    self.current_key = Some(entry.key().clone());
-                    continue;
-                }
-
                 self.current_key = Some(entry.key().clone());
                 self.current_value = Some(entry.value().clone());
+                self.current_is_deletion = internal_key.is_deletion();
                 self.valid = true;
                 return Ok(true);
             }
@@ -188,8 +192,8 @@ impl Iterator for MemTableIterator {
     }
 
     fn seek_for_prev(&mut self, target: &Slice) -> Result<bool> {
-        // Find last key <= target
-        let mut last_valid: Option<(Vec<u8>, Vec<u8>)> = None;
+        // Find last key <= target (including deletion markers)
+        let mut last_entry: Option<(Vec<u8>, Vec<u8>, bool)> = None;
 
         for entry in self.map.iter() {
             let internal_slice = Slice::from(entry.key().clone());
@@ -199,14 +203,18 @@ impl Iterator for MemTableIterator {
                 break;
             }
 
-            if !internal_key.is_deletion() {
-                last_valid = Some((entry.key().clone(), entry.value().clone()));
-            }
+            // Store all entries including deletion markers
+            last_entry = Some((
+                entry.key().clone(),
+                entry.value().clone(),
+                internal_key.is_deletion(),
+            ));
         }
 
-        if let Some((key, value)) = last_valid {
+        if let Some((key, value, is_deletion)) = last_entry {
             self.current_key = Some(key);
             self.current_value = Some(value);
+            self.current_is_deletion = is_deletion;
             self.valid = true;
             Ok(true)
         } else {
@@ -242,6 +250,10 @@ impl Iterator for MemTableIterator {
 
     fn valid(&self) -> bool {
         self.valid
+    }
+
+    fn is_deletion(&self) -> bool {
+        self.current_is_deletion
     }
 }
 
@@ -305,10 +317,16 @@ mod tests {
         let mut iter = mem.iter();
         assert!(iter.seek_to_first().unwrap());
         assert_eq!(iter.key(), Slice::from("key1"));
+        assert!(!iter.is_deletion());
 
-        // Should skip deleted key2
+        // MemTableIterator now exposes deletion markers
+        assert!(iter.next().unwrap());
+        assert_eq!(iter.key(), Slice::from("key2"));
+        assert!(iter.is_deletion(), "key2 should be a deletion marker");
+
         assert!(iter.next().unwrap());
         assert_eq!(iter.key(), Slice::from("key3"));
+        assert!(!iter.is_deletion());
 
         assert!(!iter.next().unwrap());
     }
