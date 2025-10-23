@@ -15,6 +15,19 @@ RucksDB demonstrates solid performance characteristics suitable for production w
 - **Multi-threaded scalability**: 1.26x speedup at 4 threads
 - **Immutable MemTable benefit**: Flush operations don't block writes
 
+### ⚠️ Important: Data Volume Context
+
+**These benchmarks use small datasets (~1-4MB total).** LSM-Tree performance characteristics vary significantly with data volume:
+
+- **Current tests**: Focus on throughput with minimal compaction
+- **Production workloads**: Typically involve >1GB datasets with full LSM-Tree behavior
+- **Key differences**:
+  - Write amplification increases with dataset size
+  - Read performance depends heavily on data distribution across levels
+  - Compaction overhead becomes significant at larger scales
+
+**For realistic production performance assessment**, run benchmarks with larger datasets or use industry-standard tools like YCSB.
+
 ## Detailed Results
 
 ### 1. Write Performance (put)

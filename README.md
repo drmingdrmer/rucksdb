@@ -2,6 +2,8 @@
 
 A Rust implementation of [RocksDB](https://github.com/facebook/rocksdb), a high-performance embedded key-value store originally developed by Facebook.
 
+> **Note**: This project was created using Claude Code. See [all prompts used to create this project](https://github.com/drmingdrmer/rucksdb/discussions/2) - you can use them as a reference to create your own project!
+
 ## Current Status - Phase 1 Complete
 
 This is an ongoing project to reimplement RocksDB in Rust. Phase 1 is complete with basic functionality:

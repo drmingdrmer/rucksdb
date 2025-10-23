@@ -39,6 +39,37 @@ Measures multi-threaded scalability:
 
 **When to use**: Verify concurrent write performance and immutable MemTable effectiveness
 
+## Important: Data Volume Impact on LSM-Tree Performance
+
+**The total volume of data is a critical factor for LSM-Tree performance.** Results vary significantly based on dataset size:
+
+### Why Data Volume Matters
+
+1. **Write Performance**:
+   - **Small datasets (<100MB)**: Data stays in MemTable, write amplification minimal
+   - **Medium datasets (100MB-1GB)**: Multiple flushes occur, compaction starts
+   - **Large datasets (>1GB)**: Full LSM-Tree behavior with multi-level compaction
+
+2. **Read Performance**:
+   - **Small datasets**: Most data in MemTable or L0, fast reads
+   - **Medium datasets**: Data spreads across levels, more seeks required
+   - **Large datasets**: Bloom filters and block cache become critical
+
+3. **Current Benchmark Data Volumes**:
+   - `basic_ops`: ~1MB total (1000 operations × 1KB)
+   - `concurrent`: ~4MB total (4 threads × 1000 ops × 1KB)
+   - **These are small-scale benchmarks focusing on throughput, not full LSM behavior**
+
+### Implications for Real-World Performance
+
+To understand production performance:
+- Run benchmarks with >1GB datasets to see full compaction impact
+- Monitor write amplification (bytes written to disk / bytes written by user)
+- Track read amplification (disk reads required per get operation)
+- Measure space amplification (disk space / logical data size)
+
+**Note**: The current benchmarks measure *throughput* with small datasets. For realistic LSM-Tree performance assessment, use larger workloads like YCSB.
+
 ## Interpreting Results
 
 Criterion produces detailed reports in `target/criterion/`:
