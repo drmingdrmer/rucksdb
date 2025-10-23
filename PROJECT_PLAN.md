@@ -424,14 +424,14 @@ Implement persistent storage with LSM-Tree architecture.
   - [x] Proper source ordering (mem → imm → L0 → L1+)
   - [x] Level 0 in reverse order (newest first)
 - [x] **Tests**: 10 iterator tests (3 MemTable, 5 Table, 2 DB integration)
-
-**Known Issue**: Iterator shows old values for deleted keys (get() works correctly). MemTableIterator needs enhancement to filter deletion markers when crossing MemTable boundaries.
+- [x] **Bug Fix**: Deletion marker handling - MergingIterator now correctly filters deleted keys
 
 **Commits**:
 - `b8f0108` - Part 1/3: Iterator trait + MemTableIterator
 - `cf620df` - Part 2/3: TableIterator for SSTable
 - `768a107` - Part 3/3: MergingIterator with min-heap
 - `bd1a264` - DB::iter() integration
+- `8e9c0a3` - Fix deletion marker handling (added is_deletion() to trait)
 
 **Files Added**: src/iterator/mod.rs (118 lines), src/iterator/memtable_iterator.rs (348 lines), src/iterator/table_iterator.rs (438 lines), src/iterator/merging_iterator.rs (383 lines)
 **Files Modified**: src/lib.rs, src/db/db.rs (+168 lines), src/memtable/memtable.rs, src/memtable/mod.rs, src/memtable/skiplist.rs, src/table/table_reader.rs (+8 lines)
