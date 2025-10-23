@@ -176,6 +176,13 @@ impl<'a> BlockIterator<'a> {
     }
 
     /// Move to the next entry
+    ///
+    /// # Error Handling
+    /// Returns `Err` if block data is corrupted. This is important for
+    /// detecting data corruption early rather than silently stopping iteration.
+    ///
+    /// Returns `Ok(false)` only when reaching the end of valid block data,
+    /// not when encountering errors.
     #[allow(clippy::should_implement_trait)]
     pub fn next(&mut self) -> Result<bool> {
         if self.current_offset >= self.block.restart_offset {
@@ -188,15 +195,11 @@ impl<'a> BlockIterator<'a> {
             self.current_key.clone()
         };
 
-        match self.block.decode_entry(self.current_offset, &prev_key) {
-            Ok((key, value, next_offset)) => {
-                self.current_key = key;
-                self.current_value = value;
-                self.current_offset = next_offset;
-                Ok(true)
-            },
-            Err(_) => Ok(false),
-        }
+        let (key, value, next_offset) = self.block.decode_entry(self.current_offset, &prev_key)?;
+        self.current_key = key;
+        self.current_value = value;
+        self.current_offset = next_offset;
+        Ok(true)
     }
 
     /// Get current key
