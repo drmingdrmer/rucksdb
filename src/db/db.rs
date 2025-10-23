@@ -1,4 +1,5 @@
 use crate::memtable::MemTable;
+use crate::table::{TableBuilder, TableReader};
 use crate::util::{Result, Slice, Status};
 use crate::wal;
 use parking_lot::RwLock;
@@ -53,10 +54,11 @@ pub struct DB {
     mem: Arc<RwLock<MemTable>>,
     sequence: Arc<AtomicU64>,
     wal: Arc<RwLock<Option<wal::Writer>>>,
-    #[allow(dead_code)]
     db_path: PathBuf,
-    #[allow(dead_code)]
     options: DBOptions,
+    // SSTable management
+    sstables: Arc<RwLock<Vec<TableReader>>>,
+    next_file_number: Arc<AtomicU64>,
 }
 
 impl DB {
@@ -77,6 +79,9 @@ impl DB {
         let mem = Arc::new(RwLock::new(MemTable::new()));
         let sequence = Arc::new(AtomicU64::new(0));
 
+        // Load existing SSTable files
+        let (sstables, max_file_num) = Self::load_sstables(db_path)?;
+
         // Recover from WAL if exists
         if wal_path.exists() {
             Self::recover_from_wal(&wal_path, &mem, &sequence)?;
@@ -91,7 +96,53 @@ impl DB {
             wal: Arc::new(RwLock::new(Some(wal_writer))),
             db_path: db_path.to_path_buf(),
             options,
+            sstables: Arc::new(RwLock::new(sstables)),
+            next_file_number: Arc::new(AtomicU64::new(max_file_num + 1)),
         })
+    }
+
+    /// Load existing SSTable files
+    fn load_sstables(db_path: &Path) -> Result<(Vec<TableReader>, u64)> {
+        let mut sstables = Vec::new();
+        let mut max_file_num = 0u64;
+
+        if !db_path.exists() {
+            return Ok((sstables, max_file_num));
+        }
+
+        let entries = fs::read_dir(db_path)
+            .map_err(|e| Status::io_error(format!("Failed to read directory: {}", e)))?;
+
+        let mut sst_files = Vec::new();
+        for entry in entries {
+            let entry = entry.map_err(|e| Status::io_error(format!("Failed to read entry: {}", e)))?;
+            let path = entry.path();
+
+            if let Some(filename) = path.file_name() {
+                if let Some(name) = filename.to_str() {
+                    if name.ends_with(".sst") {
+                        // Extract file number from filename (e.g., "000001.sst" -> 1)
+                        if let Some(num_str) = name.strip_suffix(".sst") {
+                            if let Ok(num) = num_str.parse::<u64>() {
+                                max_file_num = max_file_num.max(num);
+                                sst_files.push((num, path));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Sort by file number (oldest first)
+        sst_files.sort_by_key(|(num, _)| *num);
+
+        // Open all SSTable files
+        for (_, path) in sst_files {
+            let reader = TableReader::open(&path)?;
+            sstables.push(reader);
+        }
+
+        Ok((sstables, max_file_num))
     }
 
     /// Recover data from WAL
@@ -202,12 +253,36 @@ impl DB {
         // Then write to MemTable
         let mem = self.mem.read();
         mem.add(seq, key, value);
+
+        // Check if we need to flush
+        if self.should_flush() {
+            drop(mem);
+            self.flush_memtable()?;
+        }
+
         Ok(())
     }
 
     pub fn get(&self, _options: &ReadOptions, key: &Slice) -> Result<Option<Slice>> {
-        let mem = self.mem.read();
-        Ok(mem.get(key))
+        // First check MemTable
+        {
+            let mem = self.mem.read();
+            let (found, value) = mem.get(key);
+            if found {
+                // Key exists in MemTable (either with value or deleted)
+                return Ok(value);
+            }
+        }
+
+        // Then check SSTables in reverse order (newest first)
+        let mut sstables = self.sstables.write();
+        for table in sstables.iter_mut().rev() {
+            if let Some(value) = table.get(key)? {
+                return Ok(Some(value));
+            }
+        }
+
+        Ok(None)
     }
 
     pub fn delete(&self, options: &WriteOptions, key: Slice) -> Result<()> {
@@ -235,7 +310,54 @@ impl DB {
         Ok(())
     }
 
-    #[allow(dead_code)]
+    /// Flush MemTable to SSTable
+    fn flush_memtable(&self) -> Result<()> {
+        // Get all entries from MemTable
+        let entries = {
+            let mem = self.mem.read();
+            mem.collect_entries()
+        };
+
+        if entries.is_empty() {
+            return Ok(());
+        }
+
+        // Generate new SSTable file
+        let file_num = self.next_file_number.fetch_add(1, Ordering::SeqCst);
+        let sst_path = self.db_path.join(format!("{:06}.sst", file_num));
+
+        // Build SSTable
+        let mut builder = TableBuilder::new(&sst_path)?;
+        for (key, value) in &entries {
+            builder.add(key, value)?;
+        }
+        builder.finish()?;
+
+        // Open the new SSTable for reading
+        let reader = TableReader::open(&sst_path)?;
+
+        // Add to sstables list
+        {
+            let mut sstables = self.sstables.write();
+            sstables.push(reader);
+        }
+
+        // Clear MemTable
+        {
+            let mut mem = self.mem.write();
+            *mem = MemTable::new();
+        }
+
+        // Clear WAL
+        {
+            let wal_path = self.db_path.join("wal.log");
+            let mut wal_guard = self.wal.write();
+            *wal_guard = Some(wal::Writer::new(&wal_path)?);
+        }
+
+        Ok(())
+    }
+
     fn should_flush(&self) -> bool {
         let mem = self.mem.read();
         mem.approximate_memory_usage() >= self.options.write_buffer_size

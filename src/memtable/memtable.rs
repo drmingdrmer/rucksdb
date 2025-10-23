@@ -102,7 +102,11 @@ impl MemTable {
         self.table.insert(encoded_key, Slice::empty());
     }
 
-    pub fn get(&self, key: &Slice) -> Option<Slice> {
+    /// Get value for a key. Returns (found, value).
+    /// - (true, Some(value)) => key found with value
+    /// - (true, None) => key found but deleted
+    /// - (false, None) => key not found in memtable
+    pub fn get(&self, key: &Slice) -> (bool, Option<Slice>) {
         let iter = self.table.iter();
 
         // Seek to the first entry with this user_key
@@ -122,9 +126,9 @@ impl MemTable {
             if let Ok(internal_key) = InternalKey::decode(&internal_key_data) {
                 if internal_key.user_key() == key {
                     if internal_key.is_deletion() {
-                        return None;
+                        return (true, None); // Found but deleted
                     }
-                    return Some(value);
+                    return (true, Some(value)); // Found with value
                 }
                 // If user_key doesn't match, we've gone past this key
                 if internal_key.user_key() > key {
@@ -132,7 +136,7 @@ impl MemTable {
                 }
             }
         }
-        None
+        (false, None) // Not found
     }
 
     pub fn approximate_memory_usage(&self) -> usize {
@@ -141,6 +145,38 @@ impl MemTable {
 
     pub fn is_empty(&self) -> bool {
         self.table.is_empty()
+    }
+
+    /// Collect all unique user keys with their latest values (for flushing to SSTable)
+    pub fn collect_entries(&self) -> Vec<(Slice, Slice)> {
+        let mut result = Vec::new();
+        let mut last_user_key: Option<Slice> = None;
+
+        // Iterate through all entries in the SkipList (sorted by internal key)
+        let iter = self.table.iter();
+        let all_entries = iter.range_from(&Slice::empty());
+
+        for (internal_key_data, value) in all_entries {
+            if let Ok(internal_key) = InternalKey::decode(&internal_key_data) {
+                let user_key = internal_key.user_key().clone();
+
+                // Skip if we've already seen this user_key (we want the first/latest entry due to reverse sequence)
+                if let Some(ref last) = last_user_key {
+                    if last == &user_key {
+                        continue;
+                    }
+                }
+
+                // Only add non-deletion entries
+                if !internal_key.is_deletion() {
+                    result.push((user_key.clone(), value));
+                }
+
+                last_user_key = Some(user_key);
+            }
+        }
+
+        result
     }
 }
 
@@ -160,7 +196,8 @@ mod tests {
 
         memtable.add(1, Slice::from("key1"), Slice::from("value1"));
 
-        let value = memtable.get(&Slice::from("key1"));
+        let (found, value) = memtable.get(&Slice::from("key1"));
+        assert!(found);
         assert_eq!(value, Some(Slice::from("value1")));
     }
 
@@ -171,7 +208,8 @@ mod tests {
         memtable.add(1, Slice::from("key1"), Slice::from("value1"));
         memtable.delete(2, Slice::from("key1"));
 
-        let value = memtable.get(&Slice::from("key1"));
+        let (found, value) = memtable.get(&Slice::from("key1"));
+        assert!(found);
         assert_eq!(value, None);
     }
 
@@ -182,7 +220,8 @@ mod tests {
         memtable.add(1, Slice::from("key1"), Slice::from("value1"));
         memtable.add(2, Slice::from("key1"), Slice::from("value2"));
 
-        let value = memtable.get(&Slice::from("key1"));
+        let (found, value) = memtable.get(&Slice::from("key1"));
+        assert!(found);
         assert_eq!(value, Some(Slice::from("value2")));
     }
 
