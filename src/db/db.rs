@@ -1,6 +1,7 @@
 use crate::memtable::MemTable;
 use crate::table::{TableBuilder, TableReader};
 use crate::util::{Result, Slice, Status};
+use crate::version::{FileMetaData, VersionEdit, VersionSet};
 use crate::wal;
 use parking_lot::RwLock;
 use std::fs;
@@ -56,9 +57,8 @@ pub struct DB {
     wal: Arc<RwLock<Option<wal::Writer>>>,
     db_path: PathBuf,
     options: DBOptions,
-    // SSTable management
-    sstables: Arc<RwLock<Vec<TableReader>>>,
-    next_file_number: Arc<AtomicU64>,
+    // Version management
+    version_set: Arc<RwLock<VersionSet>>,
 }
 
 impl DB {
@@ -77,14 +77,18 @@ impl DB {
 
         let wal_path = db_path.join("wal.log");
         let mem = Arc::new(RwLock::new(MemTable::new()));
-        let sequence = Arc::new(AtomicU64::new(0));
 
-        // Load existing SSTable files
-        let (sstables, max_file_num) = Self::load_sstables(db_path)?;
+        // Initialize VersionSet
+        let mut version_set = VersionSet::new(db_path);
+        version_set.open_or_create()?;
+
+        let sequence = Arc::new(AtomicU64::new(version_set.last_sequence()));
 
         // Recover from WAL if exists
         if wal_path.exists() {
             Self::recover_from_wal(&wal_path, &mem, &sequence)?;
+            // Update VersionSet with recovered sequence
+            version_set.set_last_sequence(sequence.load(Ordering::SeqCst));
         }
 
         // Open WAL for writing
@@ -96,53 +100,14 @@ impl DB {
             wal: Arc::new(RwLock::new(Some(wal_writer))),
             db_path: db_path.to_path_buf(),
             options,
-            sstables: Arc::new(RwLock::new(sstables)),
-            next_file_number: Arc::new(AtomicU64::new(max_file_num + 1)),
+            version_set: Arc::new(RwLock::new(version_set)),
         })
     }
 
-    /// Load existing SSTable files
-    fn load_sstables(db_path: &Path) -> Result<(Vec<TableReader>, u64)> {
-        let mut sstables = Vec::new();
-        let mut max_file_num = 0u64;
-
-        if !db_path.exists() {
-            return Ok((sstables, max_file_num));
-        }
-
-        let entries = fs::read_dir(db_path)
-            .map_err(|e| Status::io_error(format!("Failed to read directory: {}", e)))?;
-
-        let mut sst_files = Vec::new();
-        for entry in entries {
-            let entry = entry.map_err(|e| Status::io_error(format!("Failed to read entry: {}", e)))?;
-            let path = entry.path();
-
-            if let Some(filename) = path.file_name() {
-                if let Some(name) = filename.to_str() {
-                    if name.ends_with(".sst") {
-                        // Extract file number from filename (e.g., "000001.sst" -> 1)
-                        if let Some(num_str) = name.strip_suffix(".sst") {
-                            if let Ok(num) = num_str.parse::<u64>() {
-                                max_file_num = max_file_num.max(num);
-                                sst_files.push((num, path));
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Sort by file number (oldest first)
-        sst_files.sort_by_key(|(num, _)| *num);
-
-        // Open all SSTable files
-        for (_, path) in sst_files {
-            let reader = TableReader::open(&path)?;
-            sstables.push(reader);
-        }
-
-        Ok((sstables, max_file_num))
+    /// Get TableReader (simplified: no cache for now)
+    fn get_table(&self, file_number: u64) -> Result<TableReader> {
+        let sst_path = self.db_path.join(format!("{:06}.sst", file_number));
+        TableReader::open(&sst_path)
     }
 
     /// Recover data from WAL
@@ -274,11 +239,27 @@ impl DB {
             }
         }
 
-        // Then check SSTables in reverse order (newest first)
-        let mut sstables = self.sstables.write();
-        for table in sstables.iter_mut().rev() {
+        // Then check SSTables through VersionSet
+        let version_set = self.version_set.read();
+        let current = version_set.current();
+        let version = current.read();
+
+        // Check level 0 first (newest files have highest numbers)
+        for file in version.get_level_files(0).iter().rev() {
+            let mut table = self.get_table(file.number)?;
             if let Some(value) = table.get(key)? {
                 return Ok(Some(value));
+            }
+        }
+
+        // Check other levels
+        for level in 1..version.files.len() {
+            let files = version.get_overlapping_files(level, key, key);
+            for file in files {
+                let mut table = self.get_table(file.number)?;
+                if let Some(value) = table.get(key)? {
+                    return Ok(Some(value));
+                }
             }
         }
 
@@ -323,7 +304,10 @@ impl DB {
         }
 
         // Generate new SSTable file
-        let file_num = self.next_file_number.fetch_add(1, Ordering::SeqCst);
+        let file_num = {
+            let version_set = self.version_set.read();
+            version_set.new_file_number()
+        };
         let sst_path = self.db_path.join(format!("{:06}.sst", file_num));
 
         // Build SSTable
@@ -333,13 +317,23 @@ impl DB {
         }
         builder.finish()?;
 
-        // Open the new SSTable for reading
-        let reader = TableReader::open(&sst_path)?;
+        // Get file size and key range
+        let file_size = std::fs::metadata(&sst_path)
+            .map_err(|e| Status::io_error(format!("Failed to get file size: {}", e)))?
+            .len();
+        let smallest = entries.first().unwrap().0.clone();
+        let largest = entries.last().unwrap().0.clone();
 
-        // Add to sstables list
+        // Create FileMetaData and VersionEdit
+        let file_meta = FileMetaData::new(file_num, file_size, smallest, largest);
+        let mut edit = VersionEdit::new();
+        edit.add_file(0, file_meta); // Always flush to Level 0
+        edit.set_last_sequence(self.sequence.load(Ordering::SeqCst));
+
+        // Apply edit to VersionSet
         {
-            let mut sstables = self.sstables.write();
-            sstables.push(reader);
+            let version_set = self.version_set.read();
+            version_set.log_and_apply(edit)?;
         }
 
         // Clear MemTable
