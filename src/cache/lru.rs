@@ -161,9 +161,21 @@ impl<K: Clone + Eq + Hash, V: Clone> LRUCache<K, V> {
 }
 
 impl<K: Clone + Eq + Hash, V: Clone> LRUCacheInner<K, V> {
-    /// Allocates a new node, reusing from free list if available
+    /// Allocates a new node, reusing from free list if available.
+    ///
+    /// # Memory Management Strategy
+    /// When an entry is evicted from the cache, instead of deallocating the
+    /// node, we add its index to the free_list. Future allocations first
+    /// check the free_list before growing the nodes vector.
+    ///
+    /// This reduces allocation overhead and keeps node indices stable, which
+    /// is important for the HashMap lookups.
+    ///
+    /// # Returns
+    /// The index of the allocated node in the nodes vector.
     fn allocate_node(&mut self, key: K, value: V) -> usize {
         if let Some(idx) = self.free_list.pop() {
+            // Reuse a previously freed node
             self.nodes[idx] = Node {
                 key,
                 value,
@@ -172,6 +184,7 @@ impl<K: Clone + Eq + Hash, V: Clone> LRUCacheInner<K, V> {
             };
             idx
         } else {
+            // No free nodes available, grow the vector
             let idx = self.nodes.len();
             self.nodes.push(Node {
                 key,
@@ -197,13 +210,24 @@ impl<K: Clone + Eq + Hash, V: Clone> LRUCacheInner<K, V> {
         self.push_front(node_idx);
     }
 
-    /// Removes a node from its current position in the list
+    /// Removes a node from its current position in the doubly-linked list.
+    ///
+    /// # Doubly-Linked List Operation
+    /// This function updates the prev/next pointers of adjacent nodes to
+    /// maintain list consistency. It handles three cases:
+    ///
+    /// 1. **Node is head**: Update head pointer to next node
+    /// 2. **Node is tail**: Update tail pointer to previous node
+    /// 3. **Node is middle**: Update adjacent nodes' pointers
+    ///
+    /// After unlinking, the node is disconnected from the list but still
+    /// exists in the nodes vector.
     fn unlink(&mut self, node_idx: usize) {
         let node = &self.nodes[node_idx];
         let prev = node.prev;
         let next = node.next;
 
-        // Update previous node's next pointer
+        // Update previous node's next pointer (or head if this is first node)
         if let Some(prev_idx) = prev {
             self.nodes[prev_idx].next = next;
         } else {
@@ -211,7 +235,7 @@ impl<K: Clone + Eq + Hash, V: Clone> LRUCacheInner<K, V> {
             self.head = next;
         }
 
-        // Update next node's prev pointer
+        // Update next node's prev pointer (or tail if this is last node)
         if let Some(next_idx) = next {
             self.nodes[next_idx].prev = prev;
         } else {
@@ -220,7 +244,19 @@ impl<K: Clone + Eq + Hash, V: Clone> LRUCacheInner<K, V> {
         }
     }
 
-    /// Adds a node to the front of the list
+    /// Adds a node to the front of the list (most recently used position).
+    ///
+    /// # List Structure
+    /// The doubly-linked list maintains LRU order:
+    /// - **Head**: Most recently used (newest)
+    /// - **Tail**: Least recently used (oldest, will be evicted first)
+    ///
+    /// This operation:
+    /// 1. Sets node's prev to None (it becomes the new head)
+    /// 2. Sets node's next to current head
+    /// 3. Updates old head's prev to point to this node
+    /// 4. Updates head pointer to this node
+    /// 5. If list was empty, also sets tail pointer
     fn push_front(&mut self, node_idx: usize) {
         self.nodes[node_idx].prev = None;
         self.nodes[node_idx].next = self.head;

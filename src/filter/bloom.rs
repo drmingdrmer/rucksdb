@@ -8,10 +8,17 @@ pub struct BloomFilterPolicy {
 }
 
 impl BloomFilterPolicy {
-    /// Create a new Bloom filter policy
-    /// bits_per_key: Number of bits to use per key (10 gives ~1% false positive
-    /// rate)
-    pub fn new(bits_per_key: usize) -> Self {
+    /// Create a new Bloom filter policy.
+    ///
+    /// # Parameters
+    /// - `bits_per_key`: Number of bits to use per key
+    ///   - 10 bits/key → ~1% false positive rate
+    ///   - 14 bits/key → ~0.1% false positive rate
+    ///   - 20 bits/key → ~0.001% false positive rate
+    ///
+    /// This is a const fn for compile-time construction of bloom filter
+    /// policies.
+    pub const fn new(bits_per_key: usize) -> Self {
         BloomFilterPolicy { bits_per_key }
     }
 

@@ -82,7 +82,11 @@ pub struct BlockHandle {
 }
 
 impl BlockHandle {
-    pub fn new(offset: u64, size: u64) -> Self {
+    /// Create a new BlockHandle pointing to a block at given offset and size.
+    ///
+    /// This is a const fn, allowing it to be evaluated at compile time for
+    /// constant block handles.
+    pub const fn new(offset: u64, size: u64) -> Self {
         BlockHandle { offset, size }
     }
 
