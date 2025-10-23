@@ -11,6 +11,7 @@ fn test_flush_memtable() {
         create_if_missing: true,
         error_if_exists: false,
         write_buffer_size: 1024, // 1KB to trigger flush quickly
+        block_cache_size: 1000,
     };
 
     let db = DB::open(db_path.to_str().unwrap(), options).unwrap();
@@ -43,6 +44,7 @@ fn test_flush_and_recovery() {
             create_if_missing: true,
             error_if_exists: false,
             write_buffer_size: 1024,
+            block_cache_size: 1000,
         };
 
         let db = DB::open(db_path.to_str().unwrap(), options).unwrap();
@@ -61,6 +63,7 @@ fn test_flush_and_recovery() {
             create_if_missing: false,
             error_if_exists: false,
             write_buffer_size: 4 * 1024 * 1024,
+            block_cache_size: 1000,
         };
 
         let db = DB::open(db_path.to_str().unwrap(), options).unwrap();
@@ -83,6 +86,7 @@ fn test_mixed_memtable_and_sstable() {
         create_if_missing: true,
         error_if_exists: false,
         write_buffer_size: 1024,
+        block_cache_size: 1000,
     };
 
     let db = DB::open(db_path.to_str().unwrap(), options).unwrap();
@@ -128,6 +132,7 @@ fn test_overwrite_across_flush() {
         create_if_missing: true,
         error_if_exists: false,
         write_buffer_size: 1024,
+        block_cache_size: 1000,
     };
 
     let db = DB::open(db_path.to_str().unwrap(), options).unwrap();
@@ -174,6 +179,7 @@ fn test_delete_after_flush() {
         create_if_missing: true,
         error_if_exists: false,
         write_buffer_size: 1024,
+        block_cache_size: 1000,
     };
 
     let db = DB::open(db_path.to_str().unwrap(), options).unwrap();

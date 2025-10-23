@@ -1,3 +1,4 @@
+use crate::cache::LRUCache;
 use crate::table::block::Block;
 use crate::table::format::{BlockHandle, Footer, FOOTER_SIZE};
 use crate::util::{Result, Slice, Status};
@@ -8,14 +9,20 @@ use std::path::Path;
 /// Table reader for reading SSTable files
 pub struct TableReader {
     file: File,
+    file_number: u64,
     file_size: u64,
     index_block: Block,
     footer: Footer,
+    block_cache: Option<LRUCache<(u64, u64), Vec<u8>>>,
 }
 
 impl TableReader {
     /// Open an SSTable file for reading
-    pub fn open<P: AsRef<Path>>(path: P) -> Result<Self> {
+    pub fn open<P: AsRef<Path>>(
+        path: P,
+        file_number: u64,
+        block_cache: Option<LRUCache<(u64, u64), Vec<u8>>>,
+    ) -> Result<Self> {
         let mut file = File::open(path)
             .map_err(|e| Status::io_error(format!("Failed to open table file: {}", e)))?;
 
@@ -39,26 +46,50 @@ impl TableReader {
         let footer = Footer::decode(&footer_data)
             .ok_or_else(|| Status::corruption("Invalid footer"))?;
 
-        // Read index block
-        let index_block_data = Self::read_block(&mut file, &footer.index_handle)?;
+        // Read index block (not cached, as it's small and accessed once)
+        let index_block_data = Self::read_block_uncached(&mut file, &footer.index_handle)?;
         let index_block = Block::new(index_block_data)?;
 
         Ok(TableReader {
             file,
+            file_number,
             file_size,
             index_block,
             footer,
+            block_cache,
         })
     }
 
-    /// Read a block from file
-    fn read_block(file: &mut File, handle: &BlockHandle) -> Result<Vec<u8>> {
+    /// Read a block from file without caching (for index blocks)
+    fn read_block_uncached(file: &mut File, handle: &BlockHandle) -> Result<Vec<u8>> {
         file.seek(SeekFrom::Start(handle.offset))
             .map_err(|e| Status::io_error(format!("Failed to seek to block: {}", e)))?;
 
         let mut data = vec![0u8; handle.size as usize];
         file.read_exact(&mut data)
             .map_err(|e| Status::io_error(format!("Failed to read block: {}", e)))?;
+
+        Ok(data)
+    }
+
+    /// Read a block with caching support
+    fn read_block(&mut self, handle: &BlockHandle) -> Result<Vec<u8>> {
+        let cache_key = (self.file_number, handle.offset);
+
+        // Check cache first
+        if let Some(ref cache) = self.block_cache {
+            if let Some(cached_data) = cache.get(&cache_key) {
+                return Ok(cached_data);
+            }
+        }
+
+        // Not in cache, read from file
+        let data = Self::read_block_uncached(&mut self.file, handle)?;
+
+        // Insert into cache
+        if let Some(ref cache) = self.block_cache {
+            cache.insert(cache_key, data.clone());
+        }
 
         Ok(data)
     }
@@ -79,8 +110,8 @@ impl TableReader {
                 let handle = BlockHandle::decode(handle_data.data())
                     .ok_or_else(|| Status::corruption("Invalid block handle in index"))?;
 
-                // Read data block
-                let block_data = Self::read_block(&mut self.file, &handle)?;
+                // Read data block (with caching)
+                let block_data = self.read_block(&handle)?;
                 let data_block = Block::new(block_data)?;
 
                 // Search in data block
@@ -129,20 +160,29 @@ impl TableReader {
     pub fn scan_all(&mut self) -> Result<Vec<(Slice, Slice)>> {
         let mut all_entries = Vec::new();
 
-        // Iterate through index block to get all data blocks
-        let mut index_iter = self.index_block.iter();
-        if !index_iter.seek_to_first()? {
-            return Ok(all_entries);
+        // First, collect all block handles from the index
+        let mut handles = Vec::new();
+        {
+            let mut index_iter = self.index_block.iter();
+            if !index_iter.seek_to_first()? {
+                return Ok(all_entries);
+            }
+
+            loop {
+                let handle_data = index_iter.value();
+                let handle = BlockHandle::decode(handle_data.data())
+                    .ok_or_else(|| Status::corruption("Invalid block handle in index"))?;
+                handles.push(handle);
+
+                if !index_iter.next()? {
+                    break;
+                }
+            }
         }
 
-        loop {
-            // Get block handle from index
-            let handle_data = index_iter.value();
-            let handle = BlockHandle::decode(handle_data.data())
-                .ok_or_else(|| Status::corruption("Invalid block handle in index"))?;
-
-            // Read data block
-            let block_data = Self::read_block(&mut self.file, &handle)?;
+        // Now read data blocks using the collected handles
+        for handle in handles {
+            let block_data = self.read_block(&handle)?;
             let data_block = Block::new(block_data)?;
 
             // Read all entries from data block
@@ -154,11 +194,6 @@ impl TableReader {
                         break;
                     }
                 }
-            }
-
-            // Move to next data block
-            if !index_iter.next()? {
-                break;
             }
         }
 
@@ -187,14 +222,14 @@ mod tests {
     #[test]
     fn test_table_reader_open() {
         let temp_file = build_test_table(&[("key1", "value1")]);
-        let reader = TableReader::open(temp_file.path());
+        let reader = TableReader::open(temp_file.path(), 1, None);
         assert!(reader.is_ok());
     }
 
     #[test]
     fn test_table_reader_get_single() {
         let temp_file = build_test_table(&[("key1", "value1")]);
-        let mut reader = TableReader::open(temp_file.path()).unwrap();
+        let mut reader = TableReader::open(temp_file.path(), 1, None).unwrap();
 
         let value = reader.get(&Slice::from("key1")).unwrap();
         assert_eq!(value, Some(Slice::from("value1")));
@@ -208,7 +243,7 @@ mod tests {
             ("key3", "value3"),
         ];
         let temp_file = build_test_table(&entries);
-        let mut reader = TableReader::open(temp_file.path()).unwrap();
+        let mut reader = TableReader::open(temp_file.path(), 1, None).unwrap();
 
         for (key, value) in entries {
             let result = reader.get(&Slice::from(key)).unwrap();
@@ -219,7 +254,7 @@ mod tests {
     #[test]
     fn test_table_reader_get_not_found() {
         let temp_file = build_test_table(&[("key1", "value1")]);
-        let mut reader = TableReader::open(temp_file.path()).unwrap();
+        let mut reader = TableReader::open(temp_file.path(), 1, None).unwrap();
 
         let value = reader.get(&Slice::from("nonexistent")).unwrap();
         assert_eq!(value, None);
@@ -244,7 +279,7 @@ mod tests {
             temp_file
         };
 
-        let mut reader = TableReader::open(temp_file.path()).unwrap();
+        let mut reader = TableReader::open(temp_file.path(), 1, None).unwrap();
 
         for (key, value) in entries {
             let result = reader.get(&Slice::from(key.as_str())).unwrap();

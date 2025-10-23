@@ -1,3 +1,4 @@
+use crate::cache::LRUCache;
 use crate::memtable::MemTable;
 use crate::table::{TableBuilder, TableReader};
 use crate::util::{Result, Slice, Status};
@@ -39,6 +40,7 @@ pub struct DBOptions {
     pub create_if_missing: bool,
     pub error_if_exists: bool,
     pub write_buffer_size: usize,
+    pub block_cache_size: usize, // Number of blocks to cache
 }
 
 impl Default for DBOptions {
@@ -47,6 +49,7 @@ impl Default for DBOptions {
             create_if_missing: true,
             error_if_exists: false,
             write_buffer_size: 4 * 1024 * 1024, // 4MB
+            block_cache_size: 1000, // Cache up to 1000 blocks (~4MB with 4KB blocks)
         }
     }
 }
@@ -59,6 +62,8 @@ pub struct DB {
     options: DBOptions,
     // Version management
     version_set: Arc<RwLock<VersionSet>>,
+    // Block cache: (file_number, block_offset) -> block_data
+    block_cache: LRUCache<(u64, u64), Vec<u8>>,
 }
 
 impl DB {
@@ -94,6 +99,9 @@ impl DB {
         // Open WAL for writing
         let wal_writer = wal::Writer::new(&wal_path)?;
 
+        // Initialize block cache
+        let block_cache = LRUCache::new(options.block_cache_size);
+
         Ok(DB {
             mem,
             sequence,
@@ -101,13 +109,14 @@ impl DB {
             db_path: db_path.to_path_buf(),
             options,
             version_set: Arc::new(RwLock::new(version_set)),
+            block_cache,
         })
     }
 
-    /// Get TableReader (simplified: no cache for now)
+    /// Get TableReader with block cache
     fn get_table(&self, file_number: u64) -> Result<TableReader> {
         let sst_path = self.db_path.join(format!("{:06}.sst", file_number));
-        TableReader::open(&sst_path)
+        TableReader::open(&sst_path, file_number, Some(self.block_cache.clone()))
     }
 
     /// Recover data from WAL
@@ -289,6 +298,11 @@ impl DB {
 
     pub fn close(&self) -> Result<()> {
         Ok(())
+    }
+
+    /// Get block cache statistics
+    pub fn cache_stats(&self) -> crate::cache::CacheStats {
+        self.block_cache.stats()
     }
 
     /// Flush MemTable to SSTable

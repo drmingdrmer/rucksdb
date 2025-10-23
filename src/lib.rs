@@ -1,3 +1,4 @@
+pub mod cache;
 pub mod db;
 pub mod memtable;
 pub mod table;
