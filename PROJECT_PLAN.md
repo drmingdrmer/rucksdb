@@ -17,11 +17,12 @@ Complete Rust reimplementation of RocksDB with all core features and optimizatio
 | Phase 1: Foundation | ✅ Complete | 100% | 1 day |
 | Phase 2: LSM-Tree Core | ✅ Complete | 100% | 1 day |
 | Phase 3: Performance | ✅ Complete | 100% | 4 sessions |
-| Phase 4: Advanced Features | ⏳ Planned | 0% | 4-6 weeks |
+| Phase 3.5: Code Quality | ✅ Complete | 100% | 1 session |
+| Phase 4: Advanced Features | 🔄 In Progress | 0% | 4-6 weeks |
 | Phase 5: Stability | ⏳ Planned | 0% | Ongoing |
 
-**Total Lines of Code**: 5020 lines (+280 in Phase 3.3)
-**Total Tests**: 118 (all passing, +10 since Phase 3.2)
+**Total Lines of Code**: 5169 lines (+149 in Phase 3.5)
+**Total Tests**: 121 (all passing, +3 since Phase 3.4)
 
 ---
 
@@ -342,15 +343,81 @@ Implement persistent storage with LSM-Tree architecture.
 
 ---
 
-## Phase 4: Advanced Features ⏳ (Est. 4-6 weeks)
+### 3.5 Code Quality & Educational Enhancements ✅ COMPLETED (2025-10-24)
+**Priority**: High | **Actual**: 1 session
 
-### 4.1 Advanced Operations ⏳
-**Priority**: Medium | **Estimated**: 1 week
+- [x] Rust 2024 Edition upgrade
+  - [x] Updated to edition 2024 in Cargo.toml
+  - [x] Created rust-toolchain.toml pinning nightly-2025-09-01
+  - [x] Enabled unstable features (allocator_api, const_trait_impl)
+  - [x] Used let_chains for cleaner nested conditionals
+  - [x] Fixed Rust 2024 match ergonomics (removed ref keywords)
+- [x] Custom LRU implementation (educational)
+  - [x] Replaced third-party lru crate with custom implementation
+  - [x] HashMap + Vec<Node> doubly-linked list architecture
+  - [x] Free-list pattern for node reuse
+  - [x] Comprehensive documentation of data structure design
+  - [x] O(1) get/insert/eviction with clear educational comments
+- [x] Performance optimizations
+  - [x] Added #[inline] to 26 hot-path functions
+  - [x] Slice operations (all 8 methods)
+  - [x] LRU cache operations (7 methods)
+  - [x] Bloom filter hash functions (2 methods)
+  - [x] SSTable format encoding/decoding (5 methods)
+  - [x] Varint encode/decode and checksum calculation
+- [x] Documentation improvements
+  - [x] Documented algorithmic trade-offs in TableReader::get()
+  - [x] Explained linear scan vs binary search decision
+  - [x] Clone-on-access design rationale in BlockIterator
+  - [x] Educational comments on performance vs simplicity
+- [x] Error handling fixes
+  - [x] Fixed BlockIterator::next() to propagate errors
+  - [x] Changed from Err(_) => Ok(false) to proper error propagation
+  - [x] Fail-fast principle for data corruption detection
+- [x] Code formatting
+  - [x] Created rustfmt.toml with educational formatting rules
+  - [x] Configured import grouping (std → external → local)
+  - [x] Applied consistent formatting across codebase
 
-- [ ] Merge Operator
-- [ ] Custom Comparator
-- [ ] Prefix Iterator
-- [ ] Range Delete
+**Commits**:
+- `cc9e2f8` - Rust 2024 upgrade with custom LRU
+- `1f25657` - Pin nightly toolchain and add rustfmt configuration
+- `a812252` - Add const fn and enhance documentation
+- `207daaa` - Add #[inline] attributes to hot-path functions
+- `0e2d351` - Document algorithmic design trade-offs
+- `0f76a3b` - Fix error handling in BlockIterator
+
+**Files Modified**: rust-toolchain.toml, rustfmt.toml, Cargo.toml, src/lib.rs, src/cache/lru.rs (rewrite), src/util/slice.rs, src/filter/bloom.rs, src/table/format.rs, src/table/table_reader.rs, src/table/block.rs, src/db/db.rs, src/memtable/memtable.rs
+**LOC Modified**: ~149 lines (documentation + inline attributes + error handling)
+**Deliverable**: ✅ Rust 2024 with educational code quality improvements
+
+---
+
+## Phase 4: Advanced Features 🔄 IN PROGRESS (Est. 4-6 weeks)
+
+### 4.1 Iterator API 🔄 IN PROGRESS
+**Priority**: High | **Estimated**: 1-2 weeks
+
+- [ ] Basic Iterator trait
+  - [ ] seek_to_first() / seek_to_last()
+  - [ ] seek(key) / seek_for_prev(key)
+  - [ ] next() / prev() navigation
+  - [ ] key() / value() accessors
+  - [ ] valid() status check
+- [ ] MemTable Iterator
+  - [ ] Wrap SkipList iterator
+  - [ ] Handle deletion markers
+- [ ] SSTable Iterator (Block-level)
+  - [ ] Reuse existing BlockIterator
+  - [ ] Index block navigation
+- [ ] Merge Iterator
+  - [ ] Min-heap for multi-source merging
+  - [ ] Combine MemTable + Immutable + SSTables
+  - [ ] Handle duplicate keys (newest wins)
+- [ ] DB Iterator Integration
+  - [ ] DB::iter() returns DBIterator
+  - [ ] ReadOptions support (snapshot, prefix, bounds)
+  - [ ] Efficient range scans
 
 ---
 
@@ -488,32 +555,37 @@ Implement persistent storage with LSM-Tree architecture.
 - **Performance**: LZ4 (~2%) better than Snappy (~5%) on test data
 - **Block Integration**: BlockBuilder.finish_with_compression()
 
+### 2025-10-24 - Phase 3.5 Code Quality
+- **Rust 2024**: Upgraded to edition 2024 with nightly-2025-09-01
+- **let_chains**: Used for cleaner nested if let patterns
+- **Custom LRU**: Educational HashMap + Vec<Node> doubly-linked list
+- **Free-list Pattern**: Reuse node indices to reduce allocations
+- **#[inline]**: Added to 26 hot-path functions for performance
+- **const fn**: Made BlockHandle::new and BloomFilterPolicy::new compile-time
+- **Error Handling**: Changed BlockIterator::next() to propagate errors (fail-fast)
+- **Documentation**: Added algorithmic trade-off explanations for educational value
+- **rustfmt**: Created config for consistent formatting (max_width=100, std→external→local)
+
 ---
 
 ## Next Session Goals
 
-### Immediate (Next Session)
-1. ✅ Commit Phase 1 code
-2. ✅ Create project plan document
-3. ✅ Complete Phase 2.1: WAL implementation
-4. ✅ Complete Phase 2.2: SSTable implementation
-5. ✅ Complete Phase 2.4: DB integration with flush
-6. ✅ Complete Phase 2.3: Compaction (Version management and compaction strategy)
-7. ✅ Complete Phase 3.1: Block Cache implementation
-8. ✅ Complete Phase 3.2: Bloom Filter implementation
-9. ✅ Complete Phase 3.3: Compression (Snappy/LZ4)
-10. ✅ Complete Phase 3.4: Concurrency Optimization
-11. ✅ Complete Phase 3 (Add compression/filter options to DBOptions)
-12. ✅ Add benchmarking infrastructure and baseline results
+### Immediate (This Session)
+1. ✅ Complete Phase 3.5: Code Quality (Rust 2024, custom LRU, inline, docs, error handling)
+2. ✅ Update PROJECT_PLAN.md with Phase 3.5 completion
+3. 🔄 Start Phase 4.1: Iterator API implementation
 
 ### This Week
-- Start Phase 4 (Advanced Features)
-- Consider Column Families or Merge Operators
+- ✅ Complete Phase 3.5 (Code Quality & Educational Enhancements)
+- 🔄 Start Phase 4.1: Iterator API (foundation for advanced features)
+- Implement DBIterator with seek/next/prev operations
+- Add merge iterator for multi-level reads
 
 ### This Month
 - ✅ Complete Phase 3 (Performance Optimization)
-- ✅ Implement Performance Benchmarking with baseline results
-- Start Phase 4 (Advanced Features: Merge Operator, Custom Comparator, Column Families)
+- ✅ Complete Phase 3.5 (Code Quality improvements)
+- Complete Phase 4.1: Iterator API
+- Start Phase 4.2: Column Families or 4.3: Merge Operator
 
 ---
 
@@ -548,5 +620,5 @@ Commit message format:
 
 ---
 
-**Last Updated**: 2025-10-23 (Phase 3 Complete - Performance Optimization with Benchmarking)
-**Next Review**: After starting Phase 4 (Advanced Features)
+**Last Updated**: 2025-10-24 (Phase 3.5 Complete - Code Quality & Educational Enhancements)
+**Next Review**: After completing Phase 4.1 (Iterator API)
