@@ -39,10 +39,13 @@
 /// // Read from specific CF
 /// let value = db.get_cf(&users_cf, "user1")?;
 /// ```
+mod column_family_data;
 pub mod column_family_descriptor;
 pub mod column_family_handle;
 pub mod column_family_options;
 
+#[allow(unused_imports)]
+pub(crate) use column_family_data::ColumnFamilyData;
 pub use column_family_descriptor::ColumnFamilyDescriptor;
 pub use column_family_handle::ColumnFamilyHandle;
 pub use column_family_options::ColumnFamilyOptions;
