@@ -356,6 +356,138 @@ impl DB {
         let mem = self.mem.read();
         mem.approximate_memory_usage() >= self.options.write_buffer_size
     }
+
+    /// Compact a level by merging files into the next level
+    pub fn compact_level(&self, level: usize) -> Result<()> {
+        if level >= 6 {
+            return Ok(()); // No compaction for last level
+        }
+
+        // Get files to compact
+        let (level_files, next_level_files) = {
+            let version_set = self.version_set.read();
+            let current = version_set.current();
+            let version = current.read();
+
+            let level_files: Vec<FileMetaData> = version.get_level_files(level).to_vec();
+            if level_files.is_empty() {
+                return Ok(()); // Nothing to compact
+            }
+
+            // Get overlapping files in next level
+            let smallest = &level_files.iter().map(|f| &f.smallest).min().unwrap();
+            let largest = &level_files.iter().map(|f| &f.largest).max().unwrap();
+            let next_level_files = version.get_overlapping_files(level + 1, smallest, largest);
+
+            (level_files, next_level_files)
+        };
+
+        // Merge all entries from selected files
+        let mut all_entries: Vec<(Slice, Slice)> = Vec::new();
+
+        // Read from level files
+        for file in &level_files {
+            let mut table = self.get_table(file.number)?;
+            // Simple iteration - in production would use proper iterator
+            let entries = self.read_all_from_table(&mut table)?;
+            all_entries.extend(entries);
+        }
+
+        // Read from next level files
+        for file in &next_level_files {
+            let mut table = self.get_table(file.number)?;
+            let entries = self.read_all_from_table(&mut table)?;
+            all_entries.extend(entries);
+        }
+
+        // Sort and deduplicate (keeping newest values)
+        all_entries.sort_by(|a, b| a.0.data().cmp(b.0.data()));
+        let mut merged: Vec<(Slice, Slice)> = Vec::new();
+        for (key, value) in all_entries {
+            if merged.is_empty() || merged.last().unwrap().0 != key {
+                merged.push((key, value));
+            }
+            // Keep only the latest value for duplicate keys
+        }
+
+        if merged.is_empty() {
+            return Ok(());
+        }
+
+        // Write new file to next level
+        let file_num = {
+            let version_set = self.version_set.read();
+            version_set.new_file_number()
+        };
+        let sst_path = self.db_path.join(format!("{:06}.sst", file_num));
+
+        let mut builder = TableBuilder::new(&sst_path)?;
+        for (key, value) in &merged {
+            builder.add(key, value)?;
+        }
+        builder.finish()?;
+
+        // Get file size and key range
+        let file_size = std::fs::metadata(&sst_path)
+            .map_err(|e| Status::io_error(format!("Failed to get file size: {}", e)))?
+            .len();
+        let smallest = merged.first().unwrap().0.clone();
+        let largest = merged.last().unwrap().0.clone();
+
+        // Create VersionEdit
+        let mut edit = VersionEdit::new();
+
+        // Delete old files
+        for file in &level_files {
+            edit.delete_file(level, file.number);
+        }
+        for file in &next_level_files {
+            edit.delete_file(level + 1, file.number);
+        }
+
+        // Add new file
+        let file_meta = FileMetaData::new(file_num, file_size, smallest, largest);
+        edit.add_file(level + 1, file_meta);
+
+        // Apply edit
+        {
+            let version_set = self.version_set.read();
+            version_set.log_and_apply(edit)?;
+        }
+
+        // Delete old SSTable files
+        for file in &level_files {
+            let path = self.db_path.join(format!("{:06}.sst", file.number));
+            let _ = std::fs::remove_file(path);
+        }
+        for file in &next_level_files {
+            let path = self.db_path.join(format!("{:06}.sst", file.number));
+            let _ = std::fs::remove_file(path);
+        }
+
+        Ok(())
+    }
+
+    /// Read all entries from a table
+    fn read_all_from_table(&self, table: &mut TableReader) -> Result<Vec<(Slice, Slice)>> {
+        table.scan_all()
+    }
+
+    /// Try to compact if needed
+    pub fn maybe_compact(&self) -> Result<()> {
+        let level = {
+            let version_set = self.version_set.read();
+            let current = version_set.current();
+            let version = current.read();
+            version.pick_compaction_level()
+        };
+
+        if let Some(level) = level {
+            self.compact_level(level)?;
+        }
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]

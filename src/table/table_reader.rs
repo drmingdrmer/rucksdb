@@ -124,6 +124,46 @@ impl TableReader {
     pub fn file_size(&self) -> u64 {
         self.file_size
     }
+
+    /// Scan all entries in the table (for compaction)
+    pub fn scan_all(&mut self) -> Result<Vec<(Slice, Slice)>> {
+        let mut all_entries = Vec::new();
+
+        // Iterate through index block to get all data blocks
+        let mut index_iter = self.index_block.iter();
+        if !index_iter.seek_to_first()? {
+            return Ok(all_entries);
+        }
+
+        loop {
+            // Get block handle from index
+            let handle_data = index_iter.value();
+            let handle = BlockHandle::decode(handle_data.data())
+                .ok_or_else(|| Status::corruption("Invalid block handle in index"))?;
+
+            // Read data block
+            let block_data = Self::read_block(&mut self.file, &handle)?;
+            let data_block = Block::new(block_data)?;
+
+            // Read all entries from data block
+            let mut data_iter = data_block.iter();
+            if data_iter.seek_to_first()? {
+                loop {
+                    all_entries.push((data_iter.key(), data_iter.value()));
+                    if !data_iter.next()? {
+                        break;
+                    }
+                }
+            }
+
+            // Move to next data block
+            if !index_iter.next()? {
+                break;
+            }
+        }
+
+        Ok(all_entries)
+    }
 }
 
 #[cfg(test)]
