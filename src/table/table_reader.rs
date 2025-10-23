@@ -211,6 +211,16 @@ impl TableReader {
         self.file_size
     }
 
+    /// Get reference to index block (for iterator)
+    pub fn index_block(&self) -> &Block {
+        &self.index_block
+    }
+
+    /// Read a data block by handle (for iterator)
+    pub fn read_block_for_iter(&mut self, handle: &BlockHandle) -> Result<Vec<u8>> {
+        self.read_block(handle)
+    }
+
     /// Scan all entries in the table (for compaction)
     pub fn scan_all(&mut self) -> Result<Vec<(Slice, Slice)>> {
         let mut all_entries = Vec::new();
