@@ -2,5 +2,5 @@
 pub mod memtable;
 pub mod skiplist;
 
-pub use memtable::MemTable;
+pub use memtable::{InternalKey, MemTable};
 pub use skiplist::SkipList;

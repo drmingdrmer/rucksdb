@@ -7,6 +7,7 @@ pub mod cache;
 pub mod compression;
 pub mod db;
 pub mod filter;
+pub mod iterator;
 pub mod memtable;
 pub mod table;
 pub mod util;

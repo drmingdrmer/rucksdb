@@ -8,8 +8,8 @@ use crate::{
     util::{Result, Slice, Status},
 };
 
-const VALUE_TYPE_DELETION: u8 = 0;
-const VALUE_TYPE_VALUE: u8 = 1;
+pub const VALUE_TYPE_DELETION: u8 = 0;
+pub const VALUE_TYPE_VALUE: u8 = 1;
 
 #[derive(Clone)]
 pub struct InternalKey {
@@ -148,6 +148,14 @@ impl MemTable {
 
     pub fn is_empty(&self) -> bool {
         self.table.is_empty()
+    }
+
+    /// Create an iterator over the MemTable
+    ///
+    /// The iterator automatically skips deletion markers and returns only
+    /// live entries with their user keys (internal encoding is hidden).
+    pub fn iter(&self) -> crate::iterator::MemTableIterator {
+        crate::iterator::MemTableIterator::new(self.table.map.clone())
     }
 
     /// Collect all unique user keys with their latest values (for flushing to
