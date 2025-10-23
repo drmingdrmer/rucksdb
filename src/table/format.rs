@@ -90,6 +90,7 @@ impl BlockHandle {
         BlockHandle { offset, size }
     }
 
+    #[inline]
     pub fn encode(&self) -> Vec<u8> {
         let mut buf = Vec::with_capacity(16);
         buf.extend_from_slice(&self.offset.to_le_bytes());
@@ -97,6 +98,7 @@ impl BlockHandle {
         buf
     }
 
+    #[inline]
     pub fn decode(data: &[u8]) -> Option<Self> {
         if data.len() < 16 {
             return None;
@@ -160,6 +162,7 @@ impl Footer {
 }
 
 /// Calculate CRC32 checksum
+#[inline]
 pub fn calculate_checksum(data: &[u8]) -> u32 {
     let mut hasher = Hasher::new();
     hasher.update(data);
@@ -167,6 +170,7 @@ pub fn calculate_checksum(data: &[u8]) -> u32 {
 }
 
 /// Encode varint (variable-length integer)
+#[inline]
 pub fn encode_varint(mut value: u64) -> Vec<u8> {
     let mut buf = Vec::new();
     while value >= 0x80 {
@@ -178,6 +182,7 @@ pub fn encode_varint(mut value: u64) -> Vec<u8> {
 }
 
 /// Decode varint
+#[inline]
 pub fn decode_varint(data: &[u8]) -> Option<(u64, usize)> {
     let mut value = 0u64;
     let mut shift = 0;

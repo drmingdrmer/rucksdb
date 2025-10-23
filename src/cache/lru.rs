@@ -71,6 +71,7 @@ impl<K: Clone + Eq + Hash, V: Clone> LRUCache<K, V> {
     /// used.
     ///
     /// Returns None if the key is not found or if the cache is disabled.
+    #[inline]
     pub fn get(&self, key: &K) -> Option<V> {
         let mut inner = self.cache.lock();
 
@@ -96,6 +97,7 @@ impl<K: Clone + Eq + Hash, V: Clone> LRUCache<K, V> {
     /// If the key already exists, its value is updated and it becomes the most
     /// recently used item. If the cache is at capacity, the least recently used
     /// item is evicted.
+    #[inline]
     pub fn insert(&self, key: K, value: V) {
         let mut inner = self.cache.lock();
 
@@ -173,6 +175,7 @@ impl<K: Clone + Eq + Hash, V: Clone> LRUCacheInner<K, V> {
     ///
     /// # Returns
     /// The index of the allocated node in the nodes vector.
+    #[inline]
     fn allocate_node(&mut self, key: K, value: V) -> usize {
         if let Some(idx) = self.free_list.pop() {
             // Reuse a previously freed node
@@ -197,6 +200,7 @@ impl<K: Clone + Eq + Hash, V: Clone> LRUCacheInner<K, V> {
     }
 
     /// Moves a node to the front of the list (most recently used position)
+    #[inline]
     fn move_to_front(&mut self, node_idx: usize) {
         if self.head == Some(node_idx) {
             // Already at front
@@ -222,6 +226,7 @@ impl<K: Clone + Eq + Hash, V: Clone> LRUCacheInner<K, V> {
     ///
     /// After unlinking, the node is disconnected from the list but still
     /// exists in the nodes vector.
+    #[inline]
     fn unlink(&mut self, node_idx: usize) {
         let node = &self.nodes[node_idx];
         let prev = node.prev;
@@ -257,6 +262,7 @@ impl<K: Clone + Eq + Hash, V: Clone> LRUCacheInner<K, V> {
     /// 3. Updates old head's prev to point to this node
     /// 4. Updates head pointer to this node
     /// 5. If list was empty, also sets tail pointer
+    #[inline]
     fn push_front(&mut self, node_idx: usize) {
         self.nodes[node_idx].prev = None;
         self.nodes[node_idx].next = self.head;
@@ -273,6 +279,7 @@ impl<K: Clone + Eq + Hash, V: Clone> LRUCacheInner<K, V> {
     }
 
     /// Evicts the least recently used entry (tail of the list)
+    #[inline]
     fn evict_lru(&mut self) {
         if let Some(tail_idx) = self.tail {
             let key = self.nodes[tail_idx].key.clone();

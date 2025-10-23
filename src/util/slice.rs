@@ -6,36 +6,48 @@ pub struct Slice {
 }
 
 impl Slice {
+    #[inline]
     pub fn new(data: Vec<u8>) -> Self {
         Slice { data }
     }
 
+    #[inline]
     pub fn from_bytes(data: &[u8]) -> Self {
         Slice {
             data: data.to_vec(),
         }
     }
 
+    #[inline]
     pub fn empty() -> Self {
         Slice { data: Vec::new() }
     }
 
+    /// Returns a reference to the underlying byte slice.
+    ///
+    /// This is a hot-path function called frequently during reads/writes,
+    /// so it's marked as `#[inline]` for performance.
+    #[inline]
     pub fn data(&self) -> &[u8] {
         &self.data
     }
 
+    #[inline]
     pub fn size(&self) -> usize {
         self.data.len()
     }
 
+    #[inline]
     pub fn is_empty(&self) -> bool {
         self.data.is_empty()
     }
 
+    #[inline]
     pub fn compare(&self, other: &Slice) -> Ordering {
         self.data.cmp(&other.data)
     }
 
+    #[inline]
     pub fn starts_with(&self, prefix: &Slice) -> bool {
         self.data.starts_with(&prefix.data)
     }

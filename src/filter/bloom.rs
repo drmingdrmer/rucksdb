@@ -31,6 +31,7 @@ impl BloomFilterPolicy {
     }
 
     /// Bloom hash: simple hash function for bloom filters
+    #[inline]
     fn bloom_hash(data: &[u8]) -> u32 {
         let mut h = 0xbc9f1d34u32;
         for &b in data {
@@ -83,6 +84,7 @@ impl FilterPolicy for BloomFilterPolicy {
         filter
     }
 
+    #[inline]
     fn may_contain(&self, filter: &[u8], key: &[u8]) -> bool {
         if filter.len() < 2 {
             return false;
