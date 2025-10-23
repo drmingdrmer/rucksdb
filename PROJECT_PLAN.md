@@ -449,19 +449,24 @@ Implement persistent storage with LSM-Tree architecture.
   - [x] ColumnFamilyHandle - lightweight CF reference
   - [x] ColumnFamilyDescriptor - name + options
   - [x] Module structure and documentation
+- [x] **Internal Structure** (completed):
+  - [x] ColumnFamilyData - runtime state management
+  - [x] Per-CF MemTable and sequence numbers
+  - [x] make_immutable() / clear_immutable() lifecycle
+  - [x] Tests for CF data operations
 - [ ] **Implementation** (pending):
-  - [ ] ColumnFamilyData internal structure
   - [ ] Refactor DB to support multiple CFs
-  - [ ] Separate MemTable per CF
-  - [ ] Separate compaction per CF
   - [ ] CF create/drop operations
   - [ ] WAL updates for CF support
-  - [ ] Tests for multi-CF scenarios
+  - [ ] Per-CF compaction support
+  - [ ] Integration tests for multi-CF scenarios
 
 **Commits**:
 - `551d2a6` - Foundation types (ColumnFamilyOptions, Handle, Descriptor)
+- `ab422fd` - ColumnFamilyData internal structure
 
-**Files Added**: 4 files (~200 lines): src/column_family/{mod.rs, column_family_options.rs, column_family_handle.rs, column_family_descriptor.rs}
+**Files Added**: 5 files (~430 lines): src/column_family/{mod.rs, column_family_options.rs, column_family_handle.rs, column_family_descriptor.rs, column_family_data.rs}
+**Tests**: 108 passing (3 CF tests)
 
 **Status**: Foundation complete, full implementation is a significant refactoring effort
 
