@@ -8,8 +8,8 @@ use crate::wal;
 use parking_lot::RwLock;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 #[derive(Clone, Default)]
 pub struct WriteOptions {
@@ -253,11 +253,10 @@ impl DB {
         // Then check immutable MemTable
         {
             let imm = self.imm.read();
-            if let Some(imm_table) = imm.as_ref() {
-                let (found, value) = imm_table.get(key);
-                if found {
-                    return Ok(value);
-                }
+            if let Some(imm_table) = imm.as_ref()
+                && let (true, value) = imm_table.get(key)
+            {
+                return Ok(value);
             }
         }
 

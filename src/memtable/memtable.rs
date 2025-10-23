@@ -1,7 +1,7 @@
 use crate::memtable::skiplist::SkipList;
 use crate::util::{Result, Slice, Status};
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 const VALUE_TYPE_DELETION: u8 = 0;
 const VALUE_TYPE_VALUE: u8 = 1;
@@ -157,10 +157,10 @@ impl MemTable {
                 let user_key = internal_key.user_key().clone();
 
                 // Skip if we've already seen this user_key (we want the first/latest entry due to reverse sequence)
-                if let Some(ref last) = last_user_key {
-                    if last == &user_key {
-                        continue;
-                    }
+                if let Some(ref last) = last_user_key
+                    && last == &user_key
+                {
+                    continue;
                 }
 
                 // Only add non-deletion entries

@@ -4,8 +4,8 @@ use crate::version::version_edit::VersionEdit;
 use crate::wal;
 use parking_lot::RwLock;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 /// VersionSet manages the chain of versions and applies edits
 ///

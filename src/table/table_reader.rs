@@ -1,7 +1,7 @@
 use crate::cache::LRUCache;
 use crate::filter::FilterPolicy;
 use crate::table::block::Block;
-use crate::table::format::{BlockHandle, Footer, FOOTER_SIZE};
+use crate::table::format::{BlockHandle, FOOTER_SIZE, Footer};
 use crate::util::{Result, Slice, Status};
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
@@ -102,10 +102,10 @@ impl TableReader {
         let cache_key = (self.file_number, handle.offset);
 
         // Check cache first
-        if let Some(ref cache) = self.block_cache {
-            if let Some(cached_data) = cache.get(&cache_key) {
-                return Ok(cached_data);
-            }
+        if let Some(ref cache) = self.block_cache
+            && let Some(cached_data) = cache.get(&cache_key)
+        {
+            return Ok(cached_data);
         }
 
         // Not in cache, read from file
@@ -122,14 +122,13 @@ impl TableReader {
     /// Get a value by key
     pub fn get(&mut self, key: &Slice) -> Result<Option<Slice>> {
         // Check filter first to avoid unnecessary disk I/O
-        if let (Some(ref policy), Some(ref filter_data)) = (&self.filter_policy, &self.filter_data)
+        if let (Some(policy), Some(filter_data)) = (&self.filter_policy, &self.filter_data)
+            && !policy.may_contain(filter_data, key.data())
         {
-            if !policy.may_contain(filter_data, key.data()) {
-                // Filter says key definitely doesn't exist
-                return Ok(None);
-            }
-            // Filter says key might exist, continue with search
+            // Filter says key definitely doesn't exist
+            return Ok(None);
         }
+        // Filter says key might exist, continue with search
 
         // Search index block for the data block containing the key
         let mut iter = self.index_block.iter();

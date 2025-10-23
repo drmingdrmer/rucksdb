@@ -1,7 +1,7 @@
 [package]
 name = "rucksdb"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 authors = ["drdrxp"]
 description = "A Rust implementation of RocksDB"
 license = "Apache-2.0"
@@ -13,7 +13,6 @@ parking_lot = "0.12"
 crossbeam-skiplist = "0.1"
 snap = "1.1"
 lz4_flex = "0.11"
-lru = "0.12"
 
 [dev-dependencies]
 tempfile = "3.8"

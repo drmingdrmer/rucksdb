@@ -1,4 +1,4 @@
-use rucksdb::{DBOptions, ReadOptions, Slice, WriteOptions, DB};
+use rucksdb::{DB, DBOptions, ReadOptions, Slice, WriteOptions};
 
 fn main() {
     println!("RucksDB Simple Example");

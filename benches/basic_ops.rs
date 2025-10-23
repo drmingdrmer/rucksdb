@@ -1,5 +1,5 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
-use rucksdb::{DBOptions, ReadOptions, Slice, WriteOptions, DB};
+use criterion::{Criterion, Throughput, black_box, criterion_group, criterion_main};
+use rucksdb::{DB, DBOptions, ReadOptions, Slice, WriteOptions};
 use tempfile::TempDir;
 
 fn setup_db() -> (DB, TempDir) {

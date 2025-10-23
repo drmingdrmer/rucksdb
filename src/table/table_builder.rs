@@ -1,6 +1,6 @@
 use crate::filter::FilterPolicy;
 use crate::table::block_builder::BlockBuilder;
-use crate::table::format::{BlockHandle, CompressionType, Footer, DEFAULT_BLOCK_SIZE};
+use crate::table::format::{BlockHandle, CompressionType, DEFAULT_BLOCK_SIZE, Footer};
 use crate::util::{Result, Slice, Status};
 use std::fs::File;
 use std::io::Write;

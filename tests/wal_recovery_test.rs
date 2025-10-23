@@ -1,4 +1,4 @@
-use rucksdb::{DBOptions, ReadOptions, Slice, WriteOptions, DB};
+use rucksdb::{DB, DBOptions, ReadOptions, Slice, WriteOptions};
 use tempfile::TempDir;
 
 #[test]

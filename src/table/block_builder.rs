@@ -1,5 +1,5 @@
 use crate::table::format::{
-    calculate_checksum, encode_varint, CompressionType, DEFAULT_RESTART_INTERVAL,
+    CompressionType, DEFAULT_RESTART_INTERVAL, calculate_checksum, encode_varint,
 };
 use crate::util::Slice;
 

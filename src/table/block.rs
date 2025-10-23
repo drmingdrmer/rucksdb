@@ -1,4 +1,4 @@
-use crate::table::format::{calculate_checksum, decode_varint, CompressionType};
+use crate::table::format::{CompressionType, calculate_checksum, decode_varint};
 use crate::util::{Result, Slice, Status};
 
 /// Block reader for SSTable data blocks
@@ -306,10 +306,12 @@ mod tests {
 
         let result = Block::new(data);
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .message()
-            .unwrap()
-            .contains("checksum mismatch"));
+        assert!(
+            result
+                .unwrap_err()
+                .message()
+                .unwrap()
+                .contains("checksum mismatch")
+        );
     }
 }

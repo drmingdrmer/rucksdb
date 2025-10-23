@@ -1,6 +1,6 @@
 use crate::util::{Result, Status};
 use crate::wal::log_format::{
-    calculate_checksum, decode_header, RecordType, BLOCK_SIZE, HEADER_SIZE,
+    BLOCK_SIZE, HEADER_SIZE, RecordType, calculate_checksum, decode_header,
 };
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
