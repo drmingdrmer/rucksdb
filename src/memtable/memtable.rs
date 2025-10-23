@@ -112,11 +112,7 @@ impl MemTable {
         // Seek to the first entry with this user_key
         // Use sequence u64::MAX (which becomes 0 after reverse) to get the smallest encoded value
         // This ensures we start from the beginning of all entries for this user_key
-        let start_key = InternalKey::new(
-            key.clone(),
-            u64::MAX,
-            VALUE_TYPE_VALUE,
-        ).encode();
+        let start_key = InternalKey::new(key.clone(), u64::MAX, VALUE_TYPE_VALUE).encode();
 
         let entries = iter.range_from(&start_key);
 

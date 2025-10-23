@@ -1,5 +1,5 @@
-use rucksdb::{CompressionType, Slice};
 use rucksdb::table::{TableBuilder, TableReader};
+use rucksdb::Slice;
 use tempfile::NamedTempFile;
 
 #[test]
@@ -11,8 +11,8 @@ fn test_no_compression() {
         let mut builder = TableBuilder::new(temp_file.path()).unwrap();
 
         for i in 0..100 {
-            let key = format!("key{:04}", i);
-            let value = format!("value{:04}", i);
+            let key = format!("key{i:04}");
+            let value = format!("value{i:04}");
             builder.add(&Slice::from(key), &Slice::from(value)).unwrap();
         }
 
@@ -24,8 +24,8 @@ fn test_no_compression() {
         let mut reader = TableReader::open(temp_file.path(), 1, None).unwrap();
 
         for i in 0..100 {
-            let key = format!("key{:04}", i);
-            let expected_value = format!("value{:04}", i);
+            let key = format!("key{i:04}");
+            let expected_value = format!("value{i:04}");
             let value = reader.get(&Slice::from(key.as_str())).unwrap();
             assert_eq!(value, Some(Slice::from(expected_value)));
         }
@@ -42,8 +42,9 @@ fn test_snappy_compression() {
 
         // Use repetitive data to get good compression
         for i in 0..200 {
-            let key = format!("key{:04}", i);
-            let value = "This is a highly repetitive value that should compress well with Snappy!".to_string();
+            let key = format!("key{i:04}");
+            let value = "This is a highly repetitive value that should compress well with Snappy!"
+                .to_string();
             builder.add(&Slice::from(key), &Slice::from(value)).unwrap();
         }
 
@@ -55,8 +56,9 @@ fn test_snappy_compression() {
         let mut reader = TableReader::open(temp_file.path(), 1, None).unwrap();
 
         for i in 0..200 {
-            let key = format!("key{:04}", i);
-            let expected_value = "This is a highly repetitive value that should compress well with Snappy!";
+            let key = format!("key{i:04}");
+            let expected_value =
+                "This is a highly repetitive value that should compress well with Snappy!";
             let value = reader.get(&Slice::from(key.as_str())).unwrap();
             assert_eq!(value, Some(Slice::from(expected_value)));
         }
@@ -75,8 +77,9 @@ fn test_lz4_compression() {
 
         // Use repetitive data to get good compression
         for i in 0..200 {
-            let key = format!("key{:04}", i);
-            let value = "LZ4 compression is very fast and provides excellent compression ratios!".to_string();
+            let key = format!("key{i:04}");
+            let value = "LZ4 compression is very fast and provides excellent compression ratios!"
+                .to_string();
             builder.add(&Slice::from(key), &Slice::from(value)).unwrap();
         }
 
@@ -88,8 +91,9 @@ fn test_lz4_compression() {
         let mut reader = TableReader::open(temp_file.path(), 1, None).unwrap();
 
         for i in 0..200 {
-            let key = format!("key{:04}", i);
-            let expected_value = "LZ4 compression is very fast and provides excellent compression ratios!";
+            let key = format!("key{i:04}");
+            let expected_value =
+                "LZ4 compression is very fast and provides excellent compression ratios!";
             let value = reader.get(&Slice::from(key.as_str())).unwrap();
             assert_eq!(value, Some(Slice::from(expected_value)));
         }
@@ -107,12 +111,12 @@ fn test_compression_with_varied_data() {
         let mut builder = TableBuilder::new(temp_file.path()).unwrap();
 
         for i in 0..100 {
-            let key = format!("key{:04}", i);
+            let key = format!("key{i:04}");
             // Mix of compressible and incompressible data
             let value = if i % 2 == 0 {
                 "AAAA".repeat(50) // Highly compressible
             } else {
-                format!("Random_{}_data_{}", i, i * 97 % 256) // Less compressible
+                format!("Random_{i}_data_{}", i * 97 % 256) // Less compressible
             };
             builder.add(&Slice::from(key), &Slice::from(value)).unwrap();
         }
@@ -125,11 +129,11 @@ fn test_compression_with_varied_data() {
         let mut reader = TableReader::open(temp_file.path(), 1, None).unwrap();
 
         for i in 0..100 {
-            let key = format!("key{:04}", i);
+            let key = format!("key{i:04}");
             let expected_value = if i % 2 == 0 {
                 "AAAA".repeat(50)
             } else {
-                format!("Random_{}_data_{}", i, i * 97 % 256)
+                format!("Random_{i}_data_{}", i * 97 % 256)
             };
             let value = reader.get(&Slice::from(key.as_str())).unwrap();
             assert_eq!(value, Some(Slice::from(expected_value)));
@@ -148,9 +152,9 @@ fn test_large_values_compression() {
         let mut builder = TableBuilder::new(temp_file.path()).unwrap();
 
         for i in 0..50 {
-            let key = format!("bigkey{:04}", i);
+            let key = format!("bigkey{i:04}");
             // Large repetitive value (10KB)
-            let value = format!("Pattern_{}_", i).repeat(1000);
+            let value = format!("Pattern_{i}_").repeat(1000);
             builder.add(&Slice::from(key), &Slice::from(value)).unwrap();
         }
 
@@ -162,8 +166,8 @@ fn test_large_values_compression() {
         let mut reader = TableReader::open(temp_file.path(), 1, None).unwrap();
 
         for i in 0..50 {
-            let key = format!("bigkey{:04}", i);
-            let expected_value = format!("Pattern_{}_", i).repeat(1000);
+            let key = format!("bigkey{i:04}");
+            let expected_value = format!("Pattern_{i}_").repeat(1000);
             let value = reader.get(&Slice::from(key.as_str())).unwrap();
             assert_eq!(value, Some(Slice::from(expected_value)));
         }

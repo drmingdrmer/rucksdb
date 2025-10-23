@@ -21,12 +21,16 @@ fn test_string_ordering() {
     )
     .unwrap();
 
-    let result0 = db.get(&ReadOptions::default(), &Slice::from("key0")).unwrap();
-    println!("key0: {:?}", result0);
+    let result0 = db
+        .get(&ReadOptions::default(), &Slice::from("key0"))
+        .unwrap();
+    println!("key0: {result0:?}");
     assert_eq!(result0, Some(Slice::from("value0")));
 
-    let result1 = db.get(&ReadOptions::default(), &Slice::from("key1")).unwrap();
-    println!("key1: {:?}", result1);
+    let result1 = db
+        .get(&ReadOptions::default(), &Slice::from("key1"))
+        .unwrap();
+    println!("key1: {result1:?}");
     assert_eq!(result1, Some(Slice::from("value1")));
 
     db.put(
@@ -36,7 +40,9 @@ fn test_string_ordering() {
     )
     .unwrap();
 
-    let result1_again = db.get(&ReadOptions::default(), &Slice::from("key1")).unwrap();
-    println!("key1 after key10: {:?}", result1_again);
+    let result1_again = db
+        .get(&ReadOptions::default(), &Slice::from("key1"))
+        .unwrap();
+    println!("key1 after key10: {result1_again:?}");
     assert_eq!(result1_again, Some(Slice::from("value1")));
 }

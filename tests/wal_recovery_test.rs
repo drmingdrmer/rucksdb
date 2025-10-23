@@ -36,13 +36,19 @@ fn test_wal_recovery_after_crash() {
     {
         let db = DB::open(db_path.to_str().unwrap(), DBOptions::default()).unwrap();
 
-        let val1 = db.get(&ReadOptions::default(), &Slice::from("key1")).unwrap();
+        let val1 = db
+            .get(&ReadOptions::default(), &Slice::from("key1"))
+            .unwrap();
         assert_eq!(val1, Some(Slice::from("value1")));
 
-        let val2 = db.get(&ReadOptions::default(), &Slice::from("key2")).unwrap();
+        let val2 = db
+            .get(&ReadOptions::default(), &Slice::from("key2"))
+            .unwrap();
         assert_eq!(val2, Some(Slice::from("value2")));
 
-        let val3 = db.get(&ReadOptions::default(), &Slice::from("key3")).unwrap();
+        let val3 = db
+            .get(&ReadOptions::default(), &Slice::from("key3"))
+            .unwrap();
         assert_eq!(val3, Some(Slice::from("value3")));
     }
 }
@@ -76,10 +82,14 @@ fn test_wal_recovery_with_delete() {
     {
         let db = DB::open(db_path.to_str().unwrap(), DBOptions::default()).unwrap();
 
-        let val1 = db.get(&ReadOptions::default(), &Slice::from("key1")).unwrap();
+        let val1 = db
+            .get(&ReadOptions::default(), &Slice::from("key1"))
+            .unwrap();
         assert_eq!(val1, None);
 
-        let val2 = db.get(&ReadOptions::default(), &Slice::from("key2")).unwrap();
+        let val2 = db
+            .get(&ReadOptions::default(), &Slice::from("key2"))
+            .unwrap();
         assert_eq!(val2, Some(Slice::from("value2")));
     }
 }
@@ -117,7 +127,9 @@ fn test_wal_recovery_with_overwrite() {
     {
         let db = DB::open(db_path.to_str().unwrap(), DBOptions::default()).unwrap();
 
-        let val = db.get(&ReadOptions::default(), &Slice::from("key")).unwrap();
+        let val = db
+            .get(&ReadOptions::default(), &Slice::from("key"))
+            .unwrap();
         assert_eq!(val, Some(Slice::from("value3")));
     }
 }
@@ -132,8 +144,8 @@ fn test_wal_recovery_many_keys() {
         let db = DB::open(db_path.to_str().unwrap(), DBOptions::default()).unwrap();
 
         for i in 0..1000 {
-            let key = format!("key{}", i);
-            let value = format!("value{}", i);
+            let key = format!("key{i}");
+            let value = format!("value{i}");
             db.put(
                 &WriteOptions::default(),
                 Slice::from(key),
@@ -148,11 +160,9 @@ fn test_wal_recovery_many_keys() {
         let db = DB::open(db_path.to_str().unwrap(), DBOptions::default()).unwrap();
 
         for i in 0..1000 {
-            let key = format!("key{}", i);
-            let expected_value = format!("value{}", i);
-            let val = db
-                .get(&ReadOptions::default(), &Slice::from(key))
-                .unwrap();
+            let key = format!("key{i}");
+            let expected_value = format!("value{i}");
+            let val = db.get(&ReadOptions::default(), &Slice::from(key)).unwrap();
             assert_eq!(val, Some(Slice::from(expected_value)));
         }
     }
@@ -166,8 +176,7 @@ fn test_wal_sync_option() {
     {
         let db = DB::open(db_path.to_str().unwrap(), DBOptions::default()).unwrap();
 
-        let mut sync_opts = WriteOptions::default();
-        sync_opts.sync = true;
+        let sync_opts = WriteOptions { sync: true };
 
         db.put(&sync_opts, Slice::from("key"), Slice::from("value"))
             .unwrap();
@@ -175,7 +184,9 @@ fn test_wal_sync_option() {
 
     {
         let db = DB::open(db_path.to_str().unwrap(), DBOptions::default()).unwrap();
-        let val = db.get(&ReadOptions::default(), &Slice::from("key")).unwrap();
+        let val = db
+            .get(&ReadOptions::default(), &Slice::from("key"))
+            .unwrap();
         assert_eq!(val, Some(Slice::from("value")));
     }
 }

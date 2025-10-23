@@ -11,17 +11,21 @@ fn test_block_cache_hit_rate() {
         create_if_missing: true,
         error_if_exists: false,
         write_buffer_size: 1024, // 1KB to trigger flush quickly
-        block_cache_size: 100, // Small cache to test eviction
+        block_cache_size: 100,   // Small cache to test eviction
     };
 
     let db = DB::open(db_path.to_str().unwrap(), options).unwrap();
 
     // Write enough data to trigger flush and create SSTables
     for i in 0..200 {
-        let key = format!("key{:04}", i);
-        let value = format!("value{:04}_padding", i);
-        db.put(&WriteOptions::default(), Slice::from(key), Slice::from(value))
-            .unwrap();
+        let key = format!("key{i:04}");
+        let value = format!("value{i:04}_padding");
+        db.put(
+            &WriteOptions::default(),
+            Slice::from(key),
+            Slice::from(value),
+        )
+        .unwrap();
     }
 
     // First read - will miss cache
@@ -31,30 +35,49 @@ fn test_block_cache_hit_rate() {
 
     // Read some keys
     for i in 0..50 {
-        let key = format!("key{:04}", i);
-        let _ = db.get(&ReadOptions::default(), &Slice::from(key.as_str())).unwrap();
+        let key = format!("key{i:04}");
+        let _ = db
+            .get(&ReadOptions::default(), &Slice::from(key.as_str()))
+            .unwrap();
     }
 
     // Check cache stats - should have some misses
     let stats_after_first = db.cache_stats();
-    assert!(stats_after_first.misses > 0, "Should have cache misses on first read");
-    println!("After first read - hits: {}, misses: {}", stats_after_first.hits, stats_after_first.misses);
+    assert!(
+        stats_after_first.misses > 0,
+        "Should have cache misses on first read"
+    );
+    println!(
+        "After first read - hits: {}, misses: {}",
+        stats_after_first.hits, stats_after_first.misses
+    );
 
     // Read same keys again - should hit cache
     for i in 0..50 {
-        let key = format!("key{:04}", i);
-        let _ = db.get(&ReadOptions::default(), &Slice::from(key.as_str())).unwrap();
+        let key = format!("key{i:04}");
+        let _ = db
+            .get(&ReadOptions::default(), &Slice::from(key.as_str()))
+            .unwrap();
     }
 
     // Check cache stats - should have more hits
     let stats_after_second = db.cache_stats();
     let new_hits = stats_after_second.hits - stats_after_first.hits;
     assert!(new_hits > 0, "Should have cache hits on second read");
-    println!("After second read - hits: {}, misses: {}", stats_after_second.hits, stats_after_second.misses);
-    println!("Cache hit rate: {:.2}%", stats_after_second.hit_rate() * 100.0);
+    println!(
+        "After second read - hits: {}, misses: {}",
+        stats_after_second.hits, stats_after_second.misses
+    );
+    println!(
+        "Cache hit rate: {:.2}%",
+        stats_after_second.hit_rate() * 100.0
+    );
 
     // Verify hit rate is reasonable
-    assert!(stats_after_second.hit_rate() > 0.1, "Hit rate should be > 10%");
+    assert!(
+        stats_after_second.hit_rate() > 0.1,
+        "Hit rate should be > 10%"
+    );
 }
 
 #[test]
@@ -74,21 +97,30 @@ fn test_cache_eviction() {
 
     // Write data to trigger flush
     for i in 0..100 {
-        let key = format!("key{:04}", i);
-        let value = format!("value{:04}_padding", i);
-        db.put(&WriteOptions::default(), Slice::from(key), Slice::from(value))
-            .unwrap();
+        let key = format!("key{i:04}");
+        let value = format!("value{i:04}_padding");
+        db.put(
+            &WriteOptions::default(),
+            Slice::from(key),
+            Slice::from(value),
+        )
+        .unwrap();
     }
 
     // Read all keys to populate cache
     for i in 0..100 {
-        let key = format!("key{:04}", i);
-        let _ = db.get(&ReadOptions::default(), &Slice::from(key.as_str())).unwrap();
+        let key = format!("key{i:04}");
+        let _ = db
+            .get(&ReadOptions::default(), &Slice::from(key.as_str()))
+            .unwrap();
     }
 
     // Check that cache size doesn't exceed capacity
     let stats = db.cache_stats();
-    assert!(stats.entries <= stats.capacity, "Cache should not exceed capacity");
+    assert!(
+        stats.entries <= stats.capacity,
+        "Cache should not exceed capacity"
+    );
     println!("Cache entries: {}/{}", stats.entries, stats.capacity);
 }
 
@@ -109,16 +141,22 @@ fn test_cache_disabled() {
 
     // Write and read data
     for i in 0..50 {
-        let key = format!("key{:04}", i);
-        let value = format!("value{:04}", i);
-        db.put(&WriteOptions::default(), Slice::from(key.clone()), Slice::from(value.clone()))
-            .unwrap();
+        let key = format!("key{i:04}");
+        let value = format!("value{i:04}");
+        db.put(
+            &WriteOptions::default(),
+            Slice::from(key.clone()),
+            Slice::from(value.clone()),
+        )
+        .unwrap();
     }
 
     for i in 0..50 {
-        let key = format!("key{:04}", i);
-        let expected_value = format!("value{:04}", i);
-        let value = db.get(&ReadOptions::default(), &Slice::from(key.as_str())).unwrap();
+        let key = format!("key{i:04}");
+        let expected_value = format!("value{i:04}");
+        let value = db
+            .get(&ReadOptions::default(), &Slice::from(key.as_str()))
+            .unwrap();
         assert_eq!(value, Some(Slice::from(expected_value)));
     }
 

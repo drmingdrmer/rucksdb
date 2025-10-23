@@ -1,3 +1,4 @@
+#[allow(clippy::module_inception)]
 pub mod version;
 pub mod version_edit;
 pub mod version_set;

@@ -1,7 +1,5 @@
-use crate::table::TableReader;
-use crate::util::{Result, Slice};
+use crate::util::Slice;
 use crate::version::version_edit::{FileMetaData, NUM_LEVELS};
-use std::sync::Arc;
 
 /// A Version represents a snapshot of all SSTables organized by levels
 ///
@@ -62,7 +60,11 @@ impl Version {
 
     /// Get overlapping files at level 0 for a key range
     /// Level 0 files can overlap, so we need to check all files
-    pub fn get_overlapping_level0_files(&self, smallest: &Slice, largest: &Slice) -> Vec<FileMetaData> {
+    pub fn get_overlapping_level0_files(
+        &self,
+        smallest: &Slice,
+        largest: &Slice,
+    ) -> Vec<FileMetaData> {
         let mut result = Vec::new();
 
         for file in &self.files[0] {
@@ -76,7 +78,12 @@ impl Version {
 
     /// Get overlapping files at level 1+ for a key range
     /// Since files don't overlap at these levels, we can use binary search
-    pub fn get_overlapping_files(&self, level: usize, smallest: &Slice, largest: &Slice) -> Vec<FileMetaData> {
+    pub fn get_overlapping_files(
+        &self,
+        level: usize,
+        smallest: &Slice,
+        largest: &Slice,
+    ) -> Vec<FileMetaData> {
         if level >= NUM_LEVELS {
             return Vec::new();
         }
@@ -89,13 +96,13 @@ impl Version {
 
         // Binary search for the first file that might overlap
         let files = &self.files[level];
-        let start_idx = files.iter()
+        let start_idx = files
+            .iter()
             .position(|f| f.largest.data() >= smallest.data())
             .unwrap_or(files.len());
 
         // Add all files that overlap
-        for i in start_idx..files.len() {
-            let file = &files[i];
+        for file in files.iter().skip(start_idx) {
             if file.smallest.data() > largest.data() {
                 break;
             }
@@ -106,7 +113,12 @@ impl Version {
     }
 
     /// Check if two key ranges overlap
-    fn key_range_overlaps(a_smallest: &Slice, a_largest: &Slice, b_smallest: &Slice, b_largest: &Slice) -> bool {
+    fn key_range_overlaps(
+        a_smallest: &Slice,
+        a_largest: &Slice,
+        b_smallest: &Slice,
+        b_largest: &Slice,
+    ) -> bool {
         // Ranges overlap if they're not disjoint
         // Disjoint means: a is entirely before b OR b is entirely before a
         !(a_largest.data() < b_smallest.data() || b_largest.data() < a_smallest.data())
@@ -183,10 +195,17 @@ mod tests {
         let mut version = Version::new();
 
         // Add overlapping files to level 0
-        version.add_file(0, FileMetaData::new(1, 1024, Slice::from("a"), Slice::from("m")));
-        version.add_file(0, FileMetaData::new(2, 1024, Slice::from("k"), Slice::from("z")));
+        version.add_file(
+            0,
+            FileMetaData::new(1, 1024, Slice::from("a"), Slice::from("m")),
+        );
+        version.add_file(
+            0,
+            FileMetaData::new(2, 1024, Slice::from("k"), Slice::from("z")),
+        );
 
-        let overlapping = version.get_overlapping_level0_files(&Slice::from("j"), &Slice::from("p"));
+        let overlapping =
+            version.get_overlapping_level0_files(&Slice::from("j"), &Slice::from("p"));
         assert_eq!(overlapping.len(), 2);
     }
 
@@ -196,7 +215,10 @@ mod tests {
 
         // Add 4 files to level 0 to trigger compaction
         for i in 0..4 {
-            version.add_file(0, FileMetaData::new(i, 1024, Slice::from("a"), Slice::from("z")));
+            version.add_file(
+                0,
+                FileMetaData::new(i, 1024, Slice::from("a"), Slice::from("z")),
+            );
         }
 
         let level = version.pick_compaction_level();

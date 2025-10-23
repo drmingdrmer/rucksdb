@@ -27,17 +27,12 @@ impl Block {
         let len = data.len();
 
         // Extract and verify checksum
-        let stored_checksum = u32::from_le_bytes([
-            data[len - 4],
-            data[len - 3],
-            data[len - 2],
-            data[len - 1],
-        ]);
+        let stored_checksum =
+            u32::from_le_bytes([data[len - 4], data[len - 3], data[len - 2], data[len - 1]]);
         let actual_checksum = calculate_checksum(&data[..len - 5]); // Exclude compression and checksum
         if stored_checksum != actual_checksum {
             return Err(Status::corruption(format!(
-                "Block checksum mismatch: expected {}, got {}",
-                actual_checksum, stored_checksum
+                "Block checksum mismatch: expected {actual_checksum}, got {stored_checksum}"
             )));
         }
 
@@ -81,6 +76,7 @@ impl Block {
     }
 
     /// Get restart point offset by index
+    #[allow(dead_code)]
     fn get_restart_point(&self, index: u32) -> Option<u32> {
         if index >= self.num_restarts {
             return None;
@@ -95,7 +91,7 @@ impl Block {
     }
 
     /// Create an iterator over the block
-    pub fn iter(&self) -> BlockIterator {
+    pub fn iter(&self) -> BlockIterator<'_> {
         BlockIterator::new(self)
     }
 
@@ -178,6 +174,7 @@ impl<'a> BlockIterator<'a> {
     }
 
     /// Move to the next entry
+    #[allow(clippy::should_implement_trait)]
     pub fn next(&mut self) -> Result<bool> {
         if self.current_offset >= self.block.restart_offset {
             return Ok(false);
@@ -238,11 +235,7 @@ mod tests {
 
     #[test]
     fn test_block_multiple_entries() {
-        let entries = vec![
-            ("key1", "value1"),
-            ("key2", "value2"),
-            ("key3", "value3"),
-        ];
+        let entries = vec![("key1", "value1"), ("key2", "value2"), ("key3", "value3")];
         let data = build_test_block(&entries);
         let block = Block::new(data).unwrap();
 

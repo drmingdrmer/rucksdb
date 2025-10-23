@@ -8,7 +8,7 @@ pub mod util;
 pub mod version;
 pub mod wal;
 
-pub use db::{DB, DBOptions, ReadOptions, WriteOptions};
+pub use db::{DBOptions, ReadOptions, WriteOptions, DB};
 pub use filter::{BloomFilterPolicy, FilterPolicy};
 pub use table::format::CompressionType;
 pub use util::{Result, Slice, Status};

@@ -21,7 +21,7 @@ impl Reader {
     /// Create a new WAL reader
     pub fn new<P: AsRef<Path>>(path: P) -> Result<Self> {
         let file = File::open(path)
-            .map_err(|e| Status::io_error(format!("Failed to open WAL file: {}", e)))?;
+            .map_err(|e| Status::io_error(format!("Failed to open WAL file: {e}")))?;
 
         Ok(Reader {
             file,
@@ -67,9 +67,7 @@ impl Reader {
                 }
                 RecordType::Middle => {
                     if !in_fragmented_record {
-                        return Err(Status::corruption(
-                            "Unexpected Middle record without First",
-                        ));
+                        return Err(Status::corruption("Unexpected Middle record without First"));
                     }
                     self.buffer.extend_from_slice(&fragment);
                 }
@@ -97,7 +95,7 @@ impl Reader {
                 self.offset += skip;
                 self.file
                     .seek(SeekFrom::Start(self.offset as u64))
-                    .map_err(|e| Status::io_error(format!("Seek failed: {}", e)))?;
+                    .map_err(|e| Status::io_error(format!("Seek failed: {e}")))?;
                 continue;
             }
 
@@ -109,7 +107,7 @@ impl Reader {
                     return Ok(None);
                 }
                 Err(e) => {
-                    return Err(Status::io_error(format!("Read header failed: {}", e)));
+                    return Err(Status::io_error(format!("Read header failed: {e}")));
                 }
             }
 
@@ -120,7 +118,7 @@ impl Reader {
             let mut data = vec![0u8; length as usize];
             self.file
                 .read_exact(&mut data)
-                .map_err(|e| Status::io_error(format!("Read data failed: {}", e)))?;
+                .map_err(|e| Status::io_error(format!("Read data failed: {e}")))?;
 
             self.offset += HEADER_SIZE + length as usize;
 
@@ -129,8 +127,7 @@ impl Reader {
             if checksum != expected_checksum {
                 if self.report_corruption {
                     return Err(Status::corruption(format!(
-                        "Checksum mismatch: expected {}, got {}",
-                        expected_checksum, checksum
+                        "Checksum mismatch: expected {expected_checksum}, got {checksum}"
                     )));
                 }
                 continue;
@@ -144,7 +141,7 @@ impl Reader {
     pub fn seek(&mut self, offset: usize) -> Result<()> {
         self.file
             .seek(SeekFrom::Start(offset as u64))
-            .map_err(|e| Status::io_error(format!("Seek failed: {}", e)))?;
+            .map_err(|e| Status::io_error(format!("Seek failed: {e}")))?;
         self.offset = offset;
         self.buffer.clear();
         Ok(())
@@ -224,7 +221,7 @@ mod tests {
         {
             let mut writer = Writer::new(path).unwrap();
             for i in 0..100 {
-                let data = format!("record_{}", i);
+                let data = format!("record_{i}");
                 writer.add_record(data.as_bytes()).unwrap();
             }
             writer.sync().unwrap();
@@ -234,7 +231,7 @@ mod tests {
         {
             let mut reader = Reader::new(path).unwrap();
             for i in 0..100 {
-                let expected = format!("record_{}", i);
+                let expected = format!("record_{i}");
                 let data = reader.read_record().unwrap().unwrap();
                 assert_eq!(data, expected.as_bytes());
             }

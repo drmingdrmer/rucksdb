@@ -142,7 +142,7 @@ impl BlockBuilder {
             + self.restarts.len() * 4  // Restart array
             + 4  // Num restarts
             + 1  // Compression type
-            + 4  // Checksum
+            + 4 // Checksum
     }
 
     /// Check if the block is empty
@@ -194,8 +194,8 @@ mod tests {
         let mut builder = BlockBuilder::new(16);
 
         for i in 0..10 {
-            let key = format!("key{:04}", i);
-            let value = format!("value{:04}", i);
+            let key = format!("key{i:04}");
+            let value = format!("value{i:04}");
             builder.add(&Slice::from(key), &Slice::from(value));
         }
 
@@ -211,8 +211,8 @@ mod tests {
         let mut builder = BlockBuilder::new(4); // Restart every 4 entries
 
         for i in 0..10 {
-            let key = format!("key{:04}", i);
-            let value = format!("value{:04}", i);
+            let key = format!("key{i:04}");
+            let value = format!("value{i:04}");
             builder.add(&Slice::from(key), &Slice::from(value));
         }
 

@@ -1,4 +1,4 @@
-use crate::util::{Result, Status};
+use crate::util::Result;
 use crate::version::version::Version;
 use crate::version::version_edit::VersionEdit;
 use crate::wal;
@@ -25,7 +25,7 @@ pub struct VersionSet {
     /// MANIFEST file writer
     manifest_writer: Arc<RwLock<Option<wal::Writer>>>,
     /// MANIFEST file number
-    manifest_file_number: u64,
+    _manifest_file_number: u64,
 }
 
 impl VersionSet {
@@ -37,7 +37,7 @@ impl VersionSet {
             next_file_number: Arc::new(AtomicU64::new(1)),
             last_sequence: Arc::new(AtomicU64::new(0)),
             manifest_writer: Arc::new(RwLock::new(None)),
-            manifest_file_number: 0,
+            _manifest_file_number: 0,
         }
     }
 
@@ -206,8 +206,8 @@ impl VersionSet {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::version::version_edit::FileMetaData;
     use crate::util::Slice;
+    use crate::version::version_edit::FileMetaData;
     use tempfile::TempDir;
 
     #[test]

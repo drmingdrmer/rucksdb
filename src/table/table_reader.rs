@@ -14,7 +14,7 @@ pub struct TableReader {
     file_number: u64,
     file_size: u64,
     index_block: Block,
-    footer: Footer,
+    _footer: Footer,
     block_cache: Option<LRUCache<(u64, u64), Vec<u8>>>,
     filter_policy: Option<Arc<dyn FilterPolicy>>,
     filter_data: Option<Vec<u8>>, // Filter block data
@@ -38,12 +38,12 @@ impl TableReader {
         filter_policy: Option<Arc<dyn FilterPolicy>>,
     ) -> Result<Self> {
         let mut file = File::open(path)
-            .map_err(|e| Status::io_error(format!("Failed to open table file: {}", e)))?;
+            .map_err(|e| Status::io_error(format!("Failed to open table file: {e}")))?;
 
         // Get file size
         let file_size = file
             .seek(SeekFrom::End(0))
-            .map_err(|e| Status::io_error(format!("Failed to seek to end: {}", e)))?;
+            .map_err(|e| Status::io_error(format!("Failed to seek to end: {e}")))?;
 
         if file_size < FOOTER_SIZE as u64 {
             return Err(Status::corruption("File too small to be a valid SSTable"));
@@ -51,18 +51,19 @@ impl TableReader {
 
         // Read footer
         file.seek(SeekFrom::End(-(FOOTER_SIZE as i64)))
-            .map_err(|e| Status::io_error(format!("Failed to seek to footer: {}", e)))?;
+            .map_err(|e| Status::io_error(format!("Failed to seek to footer: {e}")))?;
 
         let mut footer_data = [0u8; FOOTER_SIZE];
         file.read_exact(&mut footer_data)
-            .map_err(|e| Status::io_error(format!("Failed to read footer: {}", e)))?;
+            .map_err(|e| Status::io_error(format!("Failed to read footer: {e}")))?;
 
-        let footer = Footer::decode(&footer_data)
-            .ok_or_else(|| Status::corruption("Invalid footer"))?;
+        let footer =
+            Footer::decode(&footer_data).ok_or_else(|| Status::corruption("Invalid footer"))?;
 
         // Read filter block if present
         let filter_data = if filter_policy.is_some() && footer.meta_index_handle.size > 0 {
-            let filter_block_data = Self::read_block_uncached(&mut file, &footer.meta_index_handle)?;
+            let filter_block_data =
+                Self::read_block_uncached(&mut file, &footer.meta_index_handle)?;
             Some(filter_block_data)
         } else {
             None
@@ -77,7 +78,7 @@ impl TableReader {
             file_number,
             file_size,
             index_block,
-            footer,
+            _footer: footer,
             block_cache,
             filter_policy,
             filter_data,
@@ -87,11 +88,11 @@ impl TableReader {
     /// Read a block from file without caching (for index blocks)
     fn read_block_uncached(file: &mut File, handle: &BlockHandle) -> Result<Vec<u8>> {
         file.seek(SeekFrom::Start(handle.offset))
-            .map_err(|e| Status::io_error(format!("Failed to seek to block: {}", e)))?;
+            .map_err(|e| Status::io_error(format!("Failed to seek to block: {e}")))?;
 
         let mut data = vec![0u8; handle.size as usize];
         file.read_exact(&mut data)
-            .map_err(|e| Status::io_error(format!("Failed to read block: {}", e)))?;
+            .map_err(|e| Status::io_error(format!("Failed to read block: {e}")))?;
 
         Ok(data)
     }
@@ -121,7 +122,8 @@ impl TableReader {
     /// Get a value by key
     pub fn get(&mut self, key: &Slice) -> Result<Option<Slice>> {
         // Check filter first to avoid unnecessary disk I/O
-        if let (Some(ref policy), Some(ref filter_data)) = (&self.filter_policy, &self.filter_data) {
+        if let (Some(ref policy), Some(ref filter_data)) = (&self.filter_policy, &self.filter_data)
+        {
             if !policy.may_contain(filter_data, key.data()) {
                 // Filter says key definitely doesn't exist
                 return Ok(None);
@@ -245,7 +247,9 @@ mod tests {
         let mut builder = TableBuilder::new(temp_file.path()).unwrap();
 
         for (key, value) in entries {
-            builder.add(&Slice::from(*key), &Slice::from(*value)).unwrap();
+            builder
+                .add(&Slice::from(*key), &Slice::from(*value))
+                .unwrap();
         }
 
         builder.finish().unwrap();
@@ -270,11 +274,7 @@ mod tests {
 
     #[test]
     fn test_table_reader_get_multiple() {
-        let entries = vec![
-            ("key1", "value1"),
-            ("key2", "value2"),
-            ("key3", "value3"),
-        ];
+        let entries = vec![("key1", "value1"), ("key2", "value2"), ("key3", "value3")];
         let temp_file = build_test_table(&entries);
         let mut reader = TableReader::open(temp_file.path(), 1, None).unwrap();
 
@@ -297,7 +297,7 @@ mod tests {
     fn test_table_reader_many_keys() {
         let mut entries = Vec::new();
         for i in 0..100 {
-            entries.push((format!("key{:04}", i), format!("value{:04}", i)));
+            entries.push((format!("key{i:04}"), format!("value{i:04}")));
         }
 
         let temp_file = {
@@ -305,7 +305,9 @@ mod tests {
             let mut builder = TableBuilder::new(temp_file.path()).unwrap();
 
             for (key, value) in &entries {
-                builder.add(&Slice::from(key.as_str()), &Slice::from(value.as_str())).unwrap();
+                builder
+                    .add(&Slice::from(key.as_str()), &Slice::from(value.as_str()))
+                    .unwrap();
             }
 
             builder.finish().unwrap();

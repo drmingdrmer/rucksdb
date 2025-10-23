@@ -1,6 +1,6 @@
 use crate::filter::FilterPolicy;
 use crate::table::block_builder::BlockBuilder;
-use crate::table::format::{BlockHandle, Footer, DEFAULT_BLOCK_SIZE, FOOTER_SIZE};
+use crate::table::format::{BlockHandle, Footer, DEFAULT_BLOCK_SIZE};
 use crate::util::{Result, Slice, Status};
 use std::fs::File;
 use std::io::Write;
@@ -34,7 +34,7 @@ impl TableBuilder {
         filter_policy: Option<Arc<dyn FilterPolicy>>,
     ) -> Result<Self> {
         let file = File::create(path)
-            .map_err(|e| Status::io_error(format!("Failed to create table file: {}", e)))?;
+            .map_err(|e| Status::io_error(format!("Failed to create table file: {e}")))?;
 
         Ok(TableBuilder {
             file,
@@ -55,14 +55,17 @@ impl TableBuilder {
     /// Keys must be added in sorted order
     pub fn add(&mut self, key: &Slice, value: &Slice) -> Result<()> {
         if !self.last_key.is_empty() && key.data() <= self.last_key.as_slice() {
-            return Err(Status::invalid_argument("Keys must be added in sorted order"));
+            return Err(Status::invalid_argument(
+                "Keys must be added in sorted order",
+            ));
         }
 
         // If there's a pending index entry, add it now
         if self.pending_index_entry {
             let separator = self.find_shortest_separator(&self.last_key, key.data());
             let handle_encoded = self.pending_handle.encode();
-            self.index_block.add(&Slice::from(separator), &Slice::from(handle_encoded));
+            self.index_block
+                .add(&Slice::from(separator), &Slice::from(handle_encoded));
             self.pending_index_entry = false;
         }
 
@@ -96,7 +99,7 @@ impl TableBuilder {
         // Write block to file
         self.file
             .write_all(&block_data)
-            .map_err(|e| Status::io_error(format!("Failed to write data block: {}", e)))?;
+            .map_err(|e| Status::io_error(format!("Failed to write data block: {e}")))?;
 
         // Record block handle for index
         self.pending_handle = BlockHandle::new(self.offset, block_size as u64);
@@ -117,7 +120,8 @@ impl TableBuilder {
         if self.pending_index_entry {
             let separator = self.find_short_successor(&self.last_key);
             let handle_encoded = self.pending_handle.encode();
-            self.index_block.add(&Slice::from(separator), &Slice::from(handle_encoded));
+            self.index_block
+                .add(&Slice::from(separator), &Slice::from(handle_encoded));
             self.pending_index_entry = false;
         }
 
@@ -127,7 +131,7 @@ impl TableBuilder {
             let handle = BlockHandle::new(self.offset, filter_data.len() as u64);
             self.file
                 .write_all(&filter_data)
-                .map_err(|e| Status::io_error(format!("Failed to write filter block: {}", e)))?;
+                .map_err(|e| Status::io_error(format!("Failed to write filter block: {e}")))?;
             self.offset += filter_data.len() as u64;
             handle
         } else {
@@ -143,7 +147,7 @@ impl TableBuilder {
         let index_handle = BlockHandle::new(self.offset, index_block_data.len() as u64);
         self.file
             .write_all(&index_block_data)
-            .map_err(|e| Status::io_error(format!("Failed to write index block: {}", e)))?;
+            .map_err(|e| Status::io_error(format!("Failed to write index block: {e}")))?;
         self.offset += index_block_data.len() as u64;
 
         // Write footer
@@ -151,18 +155,18 @@ impl TableBuilder {
         let footer_data = footer.encode();
         self.file
             .write_all(&footer_data)
-            .map_err(|e| Status::io_error(format!("Failed to write footer: {}", e)))?;
+            .map_err(|e| Status::io_error(format!("Failed to write footer: {e}")))?;
 
         // Sync file
         self.file
             .sync_all()
-            .map_err(|e| Status::io_error(format!("Failed to sync file: {}", e)))?;
+            .map_err(|e| Status::io_error(format!("Failed to sync file: {e}")))?;
 
         Ok(())
     }
 
     /// Find shortest separator between two keys
-    fn find_shortest_separator(&self, start: &[u8], limit: &[u8]) -> Vec<u8> {
+    fn find_shortest_separator(&self, start: &[u8], _limit: &[u8]) -> Vec<u8> {
         // Simple implementation: just use start key
         // A better implementation would find the shortest key > start and < limit
         start.to_vec()
@@ -203,7 +207,9 @@ mod tests {
         let temp_file = NamedTempFile::new().unwrap();
         let mut builder = TableBuilder::new(temp_file.path()).unwrap();
 
-        builder.add(&Slice::from("key1"), &Slice::from("value1")).unwrap();
+        builder
+            .add(&Slice::from("key1"), &Slice::from("value1"))
+            .unwrap();
         builder.finish().unwrap();
 
         assert_eq!(builder.num_entries(), 1);
@@ -216,8 +222,8 @@ mod tests {
         let mut builder = TableBuilder::new(temp_file.path()).unwrap();
 
         for i in 0..100 {
-            let key = format!("key{:04}", i);
-            let value = format!("value{:04}", i);
+            let key = format!("key{i:04}");
+            let value = format!("value{i:04}");
             builder.add(&Slice::from(key), &Slice::from(value)).unwrap();
         }
 
@@ -230,9 +236,15 @@ mod tests {
         let temp_file = NamedTempFile::new().unwrap();
         let mut builder = TableBuilder::new(temp_file.path()).unwrap();
 
-        builder.add(&Slice::from("aaa"), &Slice::from("v1")).unwrap();
-        builder.add(&Slice::from("bbb"), &Slice::from("v2")).unwrap();
-        builder.add(&Slice::from("ccc"), &Slice::from("v3")).unwrap();
+        builder
+            .add(&Slice::from("aaa"), &Slice::from("v1"))
+            .unwrap();
+        builder
+            .add(&Slice::from("bbb"), &Slice::from("v2"))
+            .unwrap();
+        builder
+            .add(&Slice::from("ccc"), &Slice::from("v3"))
+            .unwrap();
 
         builder.finish().unwrap();
         assert_eq!(builder.num_entries(), 3);
@@ -243,7 +255,9 @@ mod tests {
         let temp_file = NamedTempFile::new().unwrap();
         let mut builder = TableBuilder::new(temp_file.path()).unwrap();
 
-        builder.add(&Slice::from("bbb"), &Slice::from("v1")).unwrap();
+        builder
+            .add(&Slice::from("bbb"), &Slice::from("v1"))
+            .unwrap();
         let result = builder.add(&Slice::from("aaa"), &Slice::from("v2"));
 
         assert!(result.is_err());

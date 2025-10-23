@@ -1,5 +1,5 @@
-pub mod status;
 pub mod slice;
+pub mod status;
 
-pub use status::{Status, Result, Code};
 pub use slice::Slice;
+pub use status::{Code, Result, Status};

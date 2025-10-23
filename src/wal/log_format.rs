@@ -20,7 +20,6 @@
 /// - First: First fragment of a record
 /// - Middle: Middle fragment of a record
 /// - Last: Last fragment of a record
-
 use crc32fast::Hasher;
 
 /// Block size is 32KB
@@ -117,8 +116,7 @@ mod tests {
         let header = encode_header(checksum, length, record_type);
         assert_eq!(header.len(), HEADER_SIZE);
 
-        let (decoded_checksum, decoded_length, decoded_type) =
-            decode_header(&header).unwrap();
+        let (decoded_checksum, decoded_length, decoded_type) = decode_header(&header).unwrap();
         assert_eq!(decoded_checksum, checksum);
         assert_eq!(decoded_length, length);
         assert_eq!(decoded_type, record_type);
@@ -128,6 +126,6 @@ mod tests {
     fn test_block_size() {
         assert_eq!(BLOCK_SIZE, 32768);
         assert_eq!(HEADER_SIZE, 7);
-        assert!(HEADER_SIZE < BLOCK_SIZE);
+        const _: () = assert!(HEADER_SIZE < BLOCK_SIZE);
     }
 }

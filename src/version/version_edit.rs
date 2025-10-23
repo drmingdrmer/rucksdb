@@ -155,7 +155,12 @@ impl VersionEdit {
                     if pos + 4 > data.len() {
                         return Err(Status::corruption("Invalid comparator length"));
                     }
-                    let len = u32::from_le_bytes([data[pos], data[pos + 1], data[pos + 2], data[pos + 3]]) as usize;
+                    let len = u32::from_le_bytes([
+                        data[pos],
+                        data[pos + 1],
+                        data[pos + 2],
+                        data[pos + 3],
+                    ]) as usize;
                     pos += 4;
                     if pos + len > data.len() {
                         return Err(Status::corruption("Comparator data truncated"));
@@ -223,7 +228,12 @@ impl VersionEdit {
                     if pos + 4 > data.len() {
                         return Err(Status::corruption("Invalid smallest key length"));
                     }
-                    let smallest_len = u32::from_le_bytes([data[pos], data[pos + 1], data[pos + 2], data[pos + 3]]) as usize;
+                    let smallest_len = u32::from_le_bytes([
+                        data[pos],
+                        data[pos + 1],
+                        data[pos + 2],
+                        data[pos + 3],
+                    ]) as usize;
                     pos += 4;
                     if pos + smallest_len > data.len() {
                         return Err(Status::corruption("Smallest key data truncated"));
@@ -235,7 +245,12 @@ impl VersionEdit {
                     if pos + 4 > data.len() {
                         return Err(Status::corruption("Invalid largest key length"));
                     }
-                    let largest_len = u32::from_le_bytes([data[pos], data[pos + 1], data[pos + 2], data[pos + 3]]) as usize;
+                    let largest_len = u32::from_le_bytes([
+                        data[pos],
+                        data[pos + 1],
+                        data[pos + 2],
+                        data[pos + 3],
+                    ]) as usize;
                     pos += 4;
                     if pos + largest_len > data.len() {
                         return Err(Status::corruption("Largest key data truncated"));
@@ -247,7 +262,9 @@ impl VersionEdit {
                     edit.add_file(level, file);
                 }
                 _ => {
-                    return Err(Status::corruption(format!("Unknown tag in VersionEdit: {}", tag)));
+                    return Err(Status::corruption(format!(
+                        "Unknown tag in VersionEdit: {tag}"
+                    )));
                 }
             }
         }

@@ -19,7 +19,7 @@ impl BloomFilterPolicy {
     /// We use a simplified formula: k = bits_per_key * 0.69
     fn num_hash_functions(bits_per_key: usize) -> usize {
         let k = (bits_per_key as f64 * 0.69) as usize;
-        k.max(1).min(30) // At least 1, at most 30
+        k.clamp(1, 30) // At least 1, at most 30
     }
 
     /// Bloom hash: simple hash function for bloom filters
@@ -51,7 +51,7 @@ impl FilterPolicy for BloomFilterPolicy {
             bits = 64;
         }
 
-        let bytes = (bits + 7) / 8; // Round up to nearest byte
+        let bytes = bits.div_ceil(8); // Round up to nearest byte
         let bits = bytes * 8; // Actual bits after rounding
 
         // Initialize filter with zeros
@@ -64,7 +64,7 @@ impl FilterPolicy for BloomFilterPolicy {
         // Add all keys to filter
         for key in keys {
             let h = Self::bloom_hash(key);
-            let delta = (h >> 17) | (h << 15); // Rotate right 17 bits
+            let delta = h.rotate_left(15); // Rotate left 15 bits
 
             for i in 0..k {
                 let bit_pos = h.wrapping_add((i as u32).wrapping_mul(delta)) as usize % bits;
@@ -90,7 +90,7 @@ impl FilterPolicy for BloomFilterPolicy {
         }
 
         let h = Self::bloom_hash(key);
-        let delta = (h >> 17) | (h << 15); // Rotate right 17 bits
+        let delta = h.rotate_left(15); // Rotate left 15 bits
 
         for i in 0..k {
             let bit_pos = h.wrapping_add((i as u32).wrapping_mul(delta)) as usize % bits;
@@ -129,11 +129,7 @@ mod tests {
     #[test]
     fn test_bloom_filter_multiple_keys() {
         let policy = BloomFilterPolicy::new(10);
-        let keys = vec![
-            b"foo".to_vec(),
-            b"bar".to_vec(),
-            b"baz".to_vec(),
-        ];
+        let keys = vec![b"foo".to_vec(), b"bar".to_vec(), b"baz".to_vec()];
         let filter = policy.create_filter(&keys);
 
         assert!(policy.may_contain(&filter, b"foo"));
@@ -149,20 +145,20 @@ mod tests {
         // Insert 100 keys
         let mut keys = Vec::new();
         for i in 0..100 {
-            keys.push(format!("key{:04}", i).into_bytes());
+            keys.push(format!("key{i:04}").into_bytes());
         }
         let filter = policy.create_filter(&keys);
 
         // Test that all inserted keys are found
         for i in 0..100 {
-            let key = format!("key{:04}", i);
+            let key = format!("key{i:04}");
             assert!(policy.may_contain(&filter, key.as_bytes()));
         }
 
         // Test false positive rate on non-existent keys
         let mut false_positives = 0;
         for i in 100..1000 {
-            let key = format!("key{:04}", i);
+            let key = format!("key{i:04}");
             if policy.may_contain(&filter, key.as_bytes()) {
                 false_positives += 1;
             }
@@ -171,9 +167,15 @@ mod tests {
         // With 10 bits per key, false positive rate should be around 1%
         // For 900 tests, we expect around 9 false positives
         // Allow some margin: should be less than 5% (45 false positives)
-        assert!(false_positives < 45, "False positive rate too high: {}/900", false_positives);
-        println!("False positive rate: {:.2}% ({}/900)",
-                 false_positives as f64 / 9.0, false_positives);
+        assert!(
+            false_positives < 45,
+            "False positive rate too high: {false_positives}/900"
+        );
+        println!(
+            "False positive rate: {:.2}% ({}/900)",
+            false_positives as f64 / 9.0,
+            false_positives
+        );
     }
 
     #[test]
@@ -182,7 +184,7 @@ mod tests {
         let policy_low = BloomFilterPolicy::new(5);
         let mut keys = Vec::new();
         for i in 0..50 {
-            keys.push(format!("key{}", i).into_bytes());
+            keys.push(format!("key{i}").into_bytes());
         }
         let filter_low = policy_low.create_filter(&keys);
 

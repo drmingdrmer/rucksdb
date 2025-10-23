@@ -10,15 +10,9 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct WriteOptions {
     pub sync: bool,
-}
-
-impl Default for WriteOptions {
-    fn default() -> Self {
-        WriteOptions { sync: false }
-    }
 }
 
 #[derive(Clone)]
@@ -49,7 +43,7 @@ impl Default for DBOptions {
             create_if_missing: true,
             error_if_exists: false,
             write_buffer_size: 4 * 1024 * 1024, // 4MB
-            block_cache_size: 1000, // Cache up to 1000 blocks (~4MB with 4KB blocks)
+            block_cache_size: 1000,             // Cache up to 1000 blocks (~4MB with 4KB blocks)
         }
     }
 }
@@ -73,7 +67,7 @@ impl DB {
         // Create directory if needed
         if options.create_if_missing {
             fs::create_dir_all(db_path)
-                .map_err(|e| Status::io_error(format!("Failed to create directory: {}", e)))?;
+                .map_err(|e| Status::io_error(format!("Failed to create directory: {e}")))?;
         }
 
         if options.error_if_exists && db_path.exists() {
@@ -115,7 +109,7 @@ impl DB {
 
     /// Get TableReader with block cache
     fn get_table(&self, file_number: u64) -> Result<TableReader> {
-        let sst_path = self.db_path.join(format!("{:06}.sst", file_number));
+        let sst_path = self.db_path.join(format!("{file_number:06}.sst"));
         TableReader::open(&sst_path, file_number, Some(self.block_cache.clone()))
     }
 
@@ -137,8 +131,8 @@ impl DB {
             max_seq = max_seq.max(seq);
 
             let mem_guard = mem.write();
-            if value.is_some() {
-                mem_guard.add(seq, key, value.unwrap());
+            if let Some(val) = value {
+                mem_guard.add(seq, key, val);
             } else {
                 mem_guard.delete(seq, key);
             }
@@ -322,7 +316,7 @@ impl DB {
             let version_set = self.version_set.read();
             version_set.new_file_number()
         };
-        let sst_path = self.db_path.join(format!("{:06}.sst", file_num));
+        let sst_path = self.db_path.join(format!("{file_num:06}.sst"));
 
         // Build SSTable
         let mut builder = TableBuilder::new(&sst_path)?;
@@ -333,7 +327,7 @@ impl DB {
 
         // Get file size and key range
         let file_size = std::fs::metadata(&sst_path)
-            .map_err(|e| Status::io_error(format!("Failed to get file size: {}", e)))?
+            .map_err(|e| Status::io_error(format!("Failed to get file size: {e}")))?
             .len();
         let smallest = entries.first().unwrap().0.clone();
         let largest = entries.last().unwrap().0.clone();
@@ -433,7 +427,7 @@ impl DB {
             let version_set = self.version_set.read();
             version_set.new_file_number()
         };
-        let sst_path = self.db_path.join(format!("{:06}.sst", file_num));
+        let sst_path = self.db_path.join(format!("{file_num:06}.sst"));
 
         let mut builder = TableBuilder::new(&sst_path)?;
         for (key, value) in &merged {
@@ -443,7 +437,7 @@ impl DB {
 
         // Get file size and key range
         let file_size = std::fs::metadata(&sst_path)
-            .map_err(|e| Status::io_error(format!("Failed to get file size: {}", e)))?
+            .map_err(|e| Status::io_error(format!("Failed to get file size: {e}")))?
             .len();
         let smallest = merged.first().unwrap().0.clone();
         let largest = merged.last().unwrap().0.clone();
@@ -530,7 +524,9 @@ mod tests {
         )
         .unwrap();
 
-        let value = db.get(&ReadOptions::default(), &Slice::from("key1")).unwrap();
+        let value = db
+            .get(&ReadOptions::default(), &Slice::from("key1"))
+            .unwrap();
         assert_eq!(value, Some(Slice::from("value1")));
     }
 
@@ -550,7 +546,9 @@ mod tests {
         db.delete(&WriteOptions::default(), Slice::from("key1"))
             .unwrap();
 
-        let value = db.get(&ReadOptions::default(), &Slice::from("key1")).unwrap();
+        let value = db
+            .get(&ReadOptions::default(), &Slice::from("key1"))
+            .unwrap();
         assert_eq!(value, None);
     }
 
@@ -574,18 +572,21 @@ mod tests {
         .unwrap();
 
         assert_eq!(
-            db.get(&ReadOptions::default(), &Slice::from("key1")).unwrap(),
+            db.get(&ReadOptions::default(), &Slice::from("key1"))
+                .unwrap(),
             Some(Slice::from("value1"))
         );
         assert_eq!(
-            db.get(&ReadOptions::default(), &Slice::from("key2")).unwrap(),
+            db.get(&ReadOptions::default(), &Slice::from("key2"))
+                .unwrap(),
             Some(Slice::from("value2"))
         );
 
         db.delete(&WriteOptions::default(), Slice::from("key1"))
             .unwrap();
         assert_eq!(
-            db.get(&ReadOptions::default(), &Slice::from("key1")).unwrap(),
+            db.get(&ReadOptions::default(), &Slice::from("key1"))
+                .unwrap(),
             None
         );
     }
@@ -609,7 +610,9 @@ mod tests {
         )
         .unwrap();
 
-        let value = db.get(&ReadOptions::default(), &Slice::from("key1")).unwrap();
+        let value = db
+            .get(&ReadOptions::default(), &Slice::from("key1"))
+            .unwrap();
         assert_eq!(value, Some(Slice::from("value2")));
     }
 }

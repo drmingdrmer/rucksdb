@@ -13,26 +13,38 @@ fn main() {
     db.put(&write_opts, Slice::from("age"), Slice::from("30"))
         .expect("Failed to put");
 
-    if let Some(name) = db.get(&read_opts, &Slice::from("name")).expect("Failed to get") {
-        println!("Name: {}", name);
+    if let Some(name) = db
+        .get(&read_opts, &Slice::from("name"))
+        .expect("Failed to get")
+    {
+        println!("Name: {name}");
     }
 
-    if let Some(age) = db.get(&read_opts, &Slice::from("age")).expect("Failed to get") {
-        println!("Age: {}", age);
+    if let Some(age) = db
+        .get(&read_opts, &Slice::from("age"))
+        .expect("Failed to get")
+    {
+        println!("Age: {age}");
     }
 
     db.put(&write_opts, Slice::from("name"), Slice::from("Bob"))
         .expect("Failed to update");
 
-    if let Some(name) = db.get(&read_opts, &Slice::from("name")).expect("Failed to get") {
-        println!("Updated Name: {}", name);
+    if let Some(name) = db
+        .get(&read_opts, &Slice::from("name"))
+        .expect("Failed to get")
+    {
+        println!("Updated Name: {name}");
     }
 
     db.delete(&write_opts, Slice::from("age"))
         .expect("Failed to delete");
 
-    match db.get(&read_opts, &Slice::from("age")).expect("Failed to get") {
-        Some(age) => println!("Age: {}", age),
+    match db
+        .get(&read_opts, &Slice::from("age"))
+        .expect("Failed to get")
+    {
+        Some(age) => println!("Age: {age}"),
         None => println!("Age has been deleted"),
     }
 

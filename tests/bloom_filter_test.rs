@@ -1,5 +1,5 @@
-use rucksdb::{BloomFilterPolicy, Slice};
 use rucksdb::table::{TableBuilder, TableReader};
+use rucksdb::{BloomFilterPolicy, Slice};
 use std::sync::Arc;
 use tempfile::NamedTempFile;
 
@@ -10,11 +10,12 @@ fn test_bloom_filter_with_sstable() {
 
     // Build table with filter
     {
-        let mut builder = TableBuilder::new_with_filter(temp_file.path(), Some(filter_policy.clone())).unwrap();
+        let mut builder =
+            TableBuilder::new_with_filter(temp_file.path(), Some(filter_policy.clone())).unwrap();
 
         for i in 0..100 {
-            let key = format!("key{:04}", i);
-            let value = format!("value{:04}", i);
+            let key = format!("key{i:04}");
+            let value = format!("value{i:04}");
             builder.add(&Slice::from(key), &Slice::from(value)).unwrap();
         }
 
@@ -23,38 +24,39 @@ fn test_bloom_filter_with_sstable() {
 
     // Read table with filter
     {
-        let mut reader = TableReader::open_with_filter(
-            temp_file.path(),
-            1,
-            None,
-            Some(filter_policy),
-        ).unwrap();
+        let mut reader =
+            TableReader::open_with_filter(temp_file.path(), 1, None, Some(filter_policy)).unwrap();
 
         // Keys that exist should be found
         for i in 0..100 {
-            let key = format!("key{:04}", i);
+            let key = format!("key{i:04}");
             let value = reader.get(&Slice::from(key.as_str())).unwrap();
-            assert!(value.is_some(), "Key {} should exist", key);
+            assert!(value.is_some(), "Key {key} should exist");
         }
 
         // Keys that don't exist should mostly be filtered out
         // (may have false positives, but we count them)
         let mut false_positives = 0;
         for i in 100..1000 {
-            let key = format!("key{:04}", i);
-            if let Some(_) = reader.get(&Slice::from(key.as_str())).unwrap() {
+            let key = format!("key{i:04}");
+            if reader.get(&Slice::from(key.as_str())).unwrap().is_some() {
                 false_positives += 1;
             }
         }
 
         // With 10 bits per key, false positive rate should be around 1%
         // For 900 tests, expect < 5% false positives (45)
-        assert!(false_positives < 45,
-                "Too many false positives: {}/900 ({:.2}%)",
-                false_positives,
-                false_positives as f64 / 9.0);
-        println!("Bloom filter false positive rate: {:.2}% ({}/900)",
-                 false_positives as f64 / 9.0, false_positives);
+        assert!(
+            false_positives < 45,
+            "Too many false positives: {}/900 ({:.2}%)",
+            false_positives,
+            false_positives as f64 / 9.0
+        );
+        println!(
+            "Bloom filter false positive rate: {:.2}% ({}/900)",
+            false_positives as f64 / 9.0,
+            false_positives
+        );
     }
 }
 
@@ -67,8 +69,8 @@ fn test_sstable_without_filter() {
         let mut builder = TableBuilder::new(temp_file.path()).unwrap();
 
         for i in 0..50 {
-            let key = format!("test{:03}", i);
-            let value = format!("value{:03}", i);
+            let key = format!("test{i:03}");
+            let value = format!("value{i:03}");
             builder.add(&Slice::from(key), &Slice::from(value)).unwrap();
         }
 
@@ -81,8 +83,8 @@ fn test_sstable_without_filter() {
 
         // Should still work without filter
         for i in 0..50 {
-            let key = format!("test{:03}", i);
-            let expected_value = format!("value{:03}", i);
+            let key = format!("test{i:03}");
+            let expected_value = format!("value{i:03}");
             let value = reader.get(&Slice::from(key.as_str())).unwrap();
             assert_eq!(value, Some(Slice::from(expected_value)));
         }
@@ -99,11 +101,12 @@ fn test_filter_effectiveness() {
 
     // Build table with many keys
     {
-        let mut builder = TableBuilder::new_with_filter(temp_file.path(), Some(filter_policy.clone())).unwrap();
+        let mut builder =
+            TableBuilder::new_with_filter(temp_file.path(), Some(filter_policy.clone())).unwrap();
 
         for i in 0..1000 {
-            let key = format!("present{:05}", i);
-            let value = format!("val{:05}", i);
+            let key = format!("present{i:05}");
+            let value = format!("val{i:05}");
             builder.add(&Slice::from(key), &Slice::from(value)).unwrap();
         }
 
@@ -112,16 +115,12 @@ fn test_filter_effectiveness() {
 
     // Test filter effectiveness
     {
-        let mut reader = TableReader::open_with_filter(
-            temp_file.path(),
-            1,
-            None,
-            Some(filter_policy),
-        ).unwrap();
+        let mut reader =
+            TableReader::open_with_filter(temp_file.path(), 1, None, Some(filter_policy)).unwrap();
 
         // All present keys should be found
         for i in 0..1000 {
-            let key = format!("present{:05}", i);
+            let key = format!("present{i:05}");
             let value = reader.get(&Slice::from(key.as_str())).unwrap();
             assert!(value.is_some());
         }
@@ -129,19 +128,24 @@ fn test_filter_effectiveness() {
         // Count false positives for absent keys
         let mut false_positives = 0;
         for i in 0..5000 {
-            let key = format!("absent{:05}", i);
-            if let Some(_) = reader.get(&Slice::from(key.as_str())).unwrap() {
+            let key = format!("absent{i:05}");
+            if reader.get(&Slice::from(key.as_str())).unwrap().is_some() {
                 false_positives += 1;
             }
         }
 
         // With 20 bits per key, false positive rate should be around 0.05%
         // For 5000 tests, expect < 1% false positives (50)
-        assert!(false_positives < 50,
-                "Too many false positives: {}/5000 ({:.3}%)",
-                false_positives,
-                false_positives as f64 / 50.0);
-        println!("Filter effectiveness - FP rate: {:.3}% ({}/5000)",
-                 false_positives as f64 / 50.0, false_positives);
+        assert!(
+            false_positives < 50,
+            "Too many false positives: {}/5000 ({:.3}%)",
+            false_positives,
+            false_positives as f64 / 50.0
+        );
+        println!(
+            "Filter effectiveness - FP rate: {:.3}% ({}/5000)",
+            false_positives as f64 / 50.0,
+            false_positives
+        );
     }
 }

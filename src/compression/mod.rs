@@ -24,7 +24,7 @@ fn compress_snappy(data: &[u8]) -> Result<Vec<u8>> {
     let mut encoder = snap::raw::Encoder::new();
     encoder
         .compress_vec(data)
-        .map_err(|e| Status::io_error(format!("Snappy compression failed: {}", e)))
+        .map_err(|e| Status::io_error(format!("Snappy compression failed: {e}")))
 }
 
 /// Decompress data using Snappy
@@ -32,7 +32,7 @@ fn decompress_snappy(data: &[u8]) -> Result<Vec<u8>> {
     let mut decoder = snap::raw::Decoder::new();
     decoder
         .decompress_vec(data)
-        .map_err(|e| Status::corruption(format!("Snappy decompression failed: {}", e)))
+        .map_err(|e| Status::corruption(format!("Snappy decompression failed: {e}")))
 }
 
 /// Compress data using LZ4
@@ -43,7 +43,7 @@ fn compress_lz4(data: &[u8]) -> Result<Vec<u8>> {
 /// Decompress data using LZ4
 fn decompress_lz4(data: &[u8]) -> Result<Vec<u8>> {
     lz4_flex::decompress_size_prepended(data)
-        .map_err(|e| Status::corruption(format!("LZ4 decompression failed: {:?}", e)))
+        .map_err(|e| Status::corruption(format!("LZ4 decompression failed: {e:?}")))
 }
 
 #[cfg(test)]

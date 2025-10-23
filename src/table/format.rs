@@ -40,7 +40,6 @@
 /// - Index Block Handle (offset: 8 bytes, size: 8 bytes)
 /// - Padding (24 bytes, reserved for future use)
 /// - Magic Number (8 bytes: 0x88e3f3fb2af1ecd7)
-
 use crc32fast::Hasher;
 
 /// Block size for SSTable (default 4KB)

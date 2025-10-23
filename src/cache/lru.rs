@@ -61,15 +61,17 @@ impl<K: Clone + Eq + std::hash::Hash, V: Clone> LRUCache<K, V> {
         let new_order = inner.access_order;
 
         // If already exists, just update
-        if inner.map.contains_key(&key) {
-            inner.map.insert(key, (value, new_order));
+        if let std::collections::hash_map::Entry::Occupied(mut e) = inner.map.entry(key.clone()) {
+            e.insert((value, new_order));
             return;
         }
 
         // Evict if at capacity
         if inner.map.len() >= self.capacity {
             // Find LRU item (smallest access_order)
-            if let Some(lru_key) = inner.map.iter()
+            if let Some(lru_key) = inner
+                .map
+                .iter()
                 .min_by_key(|(_, (_, order))| order)
                 .map(|(k, _)| k.clone())
             {

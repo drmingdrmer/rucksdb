@@ -20,10 +20,9 @@ impl Writer {
     pub fn new<P: AsRef<Path>>(path: P) -> Result<Self> {
         let file = OpenOptions::new()
             .create(true)
-            .write(true)
             .append(true)
             .open(path)
-            .map_err(|e| Status::io_error(format!("Failed to open WAL file: {}", e)))?;
+            .map_err(|e| Status::io_error(format!("Failed to open WAL file: {e}")))?;
 
         Ok(Writer {
             file,
@@ -48,7 +47,7 @@ impl Writer {
                     let padding = vec![0u8; leftover];
                     self.file
                         .write_all(&padding)
-                        .map_err(|e| Status::io_error(format!("Write padding failed: {}", e)))?;
+                        .map_err(|e| Status::io_error(format!("Write padding failed: {e}")))?;
                     self.offset += leftover;
                 }
                 self.block_offset = 0;
@@ -90,12 +89,12 @@ impl Writer {
         // Write header
         self.file
             .write_all(&header)
-            .map_err(|e| Status::io_error(format!("Write header failed: {}", e)))?;
+            .map_err(|e| Status::io_error(format!("Write header failed: {e}")))?;
 
         // Write data
         self.file
             .write_all(data)
-            .map_err(|e| Status::io_error(format!("Write data failed: {}", e)))?;
+            .map_err(|e| Status::io_error(format!("Write data failed: {e}")))?;
 
         self.offset += HEADER_SIZE + length;
         self.block_offset += HEADER_SIZE + length;
@@ -107,7 +106,7 @@ impl Writer {
     pub fn sync(&mut self) -> Result<()> {
         self.file
             .sync_all()
-            .map_err(|e| Status::io_error(format!("Sync failed: {}", e)))
+            .map_err(|e| Status::io_error(format!("Sync failed: {e}")))
     }
 
     /// Get current file offset
@@ -148,7 +147,8 @@ mod tests {
         writer.add_record(b"record2").unwrap();
         writer.add_record(b"record3").unwrap();
 
-        let expected_size = 3 * HEADER_SIZE + b"record1".len() + b"record2".len() + b"record3".len();
+        let expected_size =
+            3 * HEADER_SIZE + b"record1".len() + b"record2".len() + b"record3".len();
         assert_eq!(writer.offset(), expected_size);
     }
 

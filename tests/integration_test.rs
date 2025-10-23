@@ -20,15 +20,21 @@ fn test_basic_operations() {
     )
     .unwrap();
 
-    let val1 = db.get(&ReadOptions::default(), &Slice::from("key1")).unwrap();
+    let val1 = db
+        .get(&ReadOptions::default(), &Slice::from("key1"))
+        .unwrap();
     assert_eq!(val1, Some(Slice::from("value1")));
 
-    let val2 = db.get(&ReadOptions::default(), &Slice::from("key2")).unwrap();
+    let val2 = db
+        .get(&ReadOptions::default(), &Slice::from("key2"))
+        .unwrap();
     assert_eq!(val2, Some(Slice::from("value2")));
 
     db.delete(&WriteOptions::default(), Slice::from("key1"))
         .unwrap();
-    let val1_after_delete = db.get(&ReadOptions::default(), &Slice::from("key1")).unwrap();
+    let val1_after_delete = db
+        .get(&ReadOptions::default(), &Slice::from("key1"))
+        .unwrap();
     assert_eq!(val1_after_delete, None);
 }
 
@@ -45,7 +51,9 @@ fn test_update_value() {
     )
     .unwrap();
 
-    let val = db.get(&ReadOptions::default(), &Slice::from("key")).unwrap();
+    let val = db
+        .get(&ReadOptions::default(), &Slice::from("key"))
+        .unwrap();
     assert_eq!(val, Some(Slice::from("value1")));
 
     db.put(
@@ -55,7 +63,9 @@ fn test_update_value() {
     )
     .unwrap();
 
-    let val = db.get(&ReadOptions::default(), &Slice::from("key")).unwrap();
+    let val = db
+        .get(&ReadOptions::default(), &Slice::from("key"))
+        .unwrap();
     assert_eq!(val, Some(Slice::from("value2")));
 }
 
@@ -78,8 +88,8 @@ fn test_many_keys() {
     let db = DB::open(db_path.to_str().unwrap(), DBOptions::default()).unwrap();
 
     for i in 0..1000 {
-        let key = format!("key{}", i);
-        let value = format!("value{}", i);
+        let key = format!("key{i}");
+        let value = format!("value{i}");
         db.put(
             &WriteOptions::default(),
             Slice::from(key),
@@ -89,8 +99,8 @@ fn test_many_keys() {
     }
 
     for i in 0..1000 {
-        let key = format!("key{}", i);
-        let value = format!("value{}", i);
+        let key = format!("key{i}");
+        let value = format!("value{i}");
         let result = db.get(&ReadOptions::default(), &Slice::from(key)).unwrap();
         assert_eq!(result, Some(Slice::from(value)));
     }

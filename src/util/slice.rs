@@ -87,7 +87,7 @@ impl Ord for Slice {
 impl fmt::Debug for Slice {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match std::str::from_utf8(&self.data) {
-            Ok(s) => write!(f, "Slice(\"{}\")", s),
+            Ok(s) => write!(f, "Slice(\"{s}\")"),
             Err(_) => write!(f, "Slice({:?})", self.data),
         }
     }
@@ -96,7 +96,7 @@ impl fmt::Debug for Slice {
 impl fmt::Display for Slice {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match std::str::from_utf8(&self.data) {
-            Ok(s) => write!(f, "{}", s),
+            Ok(s) => write!(f, "{s}"),
             Err(_) => write!(f, "{:?}", self.data),
         }
     }
