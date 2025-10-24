@@ -10,6 +10,7 @@ pub mod db;
 pub mod filter;
 pub mod iterator;
 pub mod memtable;
+pub mod statistics;
 pub mod table;
 pub mod util;
 pub mod version;
@@ -20,5 +21,6 @@ pub use column_family::{
 };
 pub use db::{DB, DBOptions, ReadOptions, WriteOptions};
 pub use filter::{BloomFilterPolicy, FilterPolicy};
+pub use statistics::Statistics;
 pub use table::format::CompressionType;
 pub use util::{Result, Slice, Status};

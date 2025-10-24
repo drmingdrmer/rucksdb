@@ -71,6 +71,8 @@ pub struct DB {
     /// Block cache shared across all CFs: (file_number, block_offset) ->
     /// block_data
     block_cache: LRUCache<(u64, u64), Vec<u8>>,
+    /// Database-wide statistics
+    statistics: Arc<crate::statistics::Statistics>,
 }
 
 impl DB {
@@ -120,12 +122,16 @@ impl DB {
         // Initialize block cache
         let block_cache = LRUCache::new(options.block_cache_size);
 
+        // Initialize statistics
+        let statistics = Arc::new(crate::statistics::Statistics::new());
+
         Ok(DB {
             column_families: cf_set,
             wal: Arc::new(RwLock::new(Some(wal_writer))),
             db_path: db_path.to_path_buf(),
             options,
             block_cache,
+            statistics,
         })
     }
 
@@ -539,6 +545,11 @@ impl DB {
     /// Get block cache statistics
     pub fn cache_stats(&self) -> crate::cache::CacheStats {
         self.block_cache.stats()
+    }
+
+    /// Get database statistics
+    pub fn statistics(&self) -> &Arc<crate::statistics::Statistics> {
+        &self.statistics
     }
 
     /// Create a new column family
