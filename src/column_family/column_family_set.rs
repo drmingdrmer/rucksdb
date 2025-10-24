@@ -161,6 +161,27 @@ impl ColumnFamilySet {
             id
         };
 
+        self.create_cf_with_id(id, name, options)
+    }
+
+    /// Create a column family with a specific ID (for recovery)
+    pub fn create_cf_with_id(
+        &self,
+        id: u32,
+        name: String,
+        options: ColumnFamilyOptions,
+    ) -> Result<ColumnFamilyHandle> {
+        // Check if CF already exists
+        {
+            let name_map = self.name_to_id.read().unwrap();
+            if name_map.contains_key(&name) {
+                return Err(Status::invalid_argument(format!(
+                    "Column family '{}' already exists",
+                    name
+                )));
+            }
+        }
+
         // Create ColumnFamilyData
         let cf = Arc::new(ColumnFamilyData::new(
             id,
@@ -179,6 +200,12 @@ impl ColumnFamilySet {
         {
             let mut name_map = self.name_to_id.write().unwrap();
             name_map.insert(name, id);
+        }
+
+        // Update next_id if necessary
+        {
+            let mut next_id = self.next_id.write().unwrap();
+            *next_id = (*next_id).max(id + 1);
         }
 
         Ok(handle)

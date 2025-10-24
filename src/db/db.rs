@@ -94,7 +94,7 @@ impl DB {
             filter_bits_per_key: options.filter_bits_per_key,
             block_cache_size: options.block_cache_size,
         };
-        let cf_set = Arc::new(ColumnFamilySet::new(name, default_cf_options)?);
+        let cf_set = Arc::new(ColumnFamilySet::new(name, default_cf_options.clone())?);
 
         let wal_path = db_path.join("wal.log");
 
@@ -105,6 +105,9 @@ impl DB {
             let mut vs = version_set.write();
             vs.open_or_create()?;
         }
+
+        // Recover Column Families from MANIFEST before WAL recovery
+        Self::recover_column_families(db_path, &cf_set, &default_cf_options)?;
 
         // Recover from WAL if exists (handles all CFs)
         if wal_path.exists() {
@@ -130,6 +133,56 @@ impl DB {
     fn get_table(&self, file_number: u64) -> Result<TableReader> {
         let sst_path = self.db_path.join(format!("{file_number:06}.sst"));
         TableReader::open(&sst_path, file_number, Some(self.block_cache.clone()))
+    }
+
+    /// Recover Column Families from MANIFEST
+    fn recover_column_families(
+        db_path: &Path,
+        cf_set: &Arc<crate::column_family::ColumnFamilySet>,
+        default_cf_options: &crate::column_family::ColumnFamilyOptions,
+    ) -> Result<()> {
+        let manifest_path = db_path.join("MANIFEST");
+
+        // If MANIFEST doesn't exist, nothing to recover
+        if !manifest_path.exists() {
+            return Ok(());
+        }
+
+        let mut reader = wal::Reader::new(&manifest_path)?;
+        let mut cf_metadata: std::collections::HashMap<u32, String> =
+            std::collections::HashMap::new();
+
+        // Read all VersionEdit records and collect CF operations
+        while let Some(record) = reader.read_record()? {
+            if record.is_empty() {
+                continue;
+            }
+
+            let edit = crate::version::VersionEdit::decode(&record)?;
+
+            // Process CF creates
+            for (cf_id, cf_name) in &edit.created_column_families {
+                cf_metadata.insert(*cf_id, cf_name.clone());
+            }
+
+            // Process CF drops
+            for cf_id in &edit.dropped_column_families {
+                cf_metadata.remove(cf_id);
+            }
+        }
+
+        // Recreate all non-default CFs (default CF already exists)
+        for (cf_id, cf_name) in cf_metadata {
+            if cf_id == 0 {
+                // Skip default CF (already exists)
+                continue;
+            }
+
+            // Create CF with specific ID (we're recovering, don't log to MANIFEST)
+            let _ = cf_set.create_cf_with_id(cf_id, cf_name, default_cf_options.clone())?;
+        }
+
+        Ok(())
     }
 
     /// Recover data from WAL (multi-CF aware)
