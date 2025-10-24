@@ -851,6 +851,26 @@ impl DB {
         self.statistics
             .record_compaction(bytes_read, file_size, num_input_files);
 
+        // Record per-level statistics
+        {
+            let version_set = cf.version_set();
+            let version_set_guard = version_set.read();
+            let current = version_set_guard.current();
+            let version = current.read();
+            let level_stats = version.level_stats();
+
+            // Record reads for input levels
+            if let Some(stats) = level_stats.level(level) {
+                stats.record_read(level_files.iter().map(|f| f.file_size).sum());
+                stats.record_compaction();
+            }
+            if let Some(stats) = level_stats.level(level + 1) {
+                stats.record_read(next_level_files.iter().map(|f| f.file_size).sum());
+                stats.record_write(file_size);
+                stats.record_compaction();
+            }
+        }
+
         // Create VersionEdit
         let mut edit = VersionEdit::new();
 

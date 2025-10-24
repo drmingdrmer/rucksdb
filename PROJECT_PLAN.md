@@ -29,10 +29,11 @@ Complete Rust reimplementation of RocksDB with all core features and optimizatio
 | Phase 5.6: Testing & Hardening | ✅ | ~823 | 15 | Crash recovery, Property-based tests, Iterator fix |
 | Phase 5.7: Performance Optimization | ✅ | ~0 | 0 | Buffer pre-allocation, Eliminate clones, Inline hints |
 | Phase 6.1: Compaction Improvements | ✅ | ~267 | 6 | Dynamic level sizing, Priority scoring, Statistics tracking |
+| Phase 6.2: Per-Level Statistics | ✅ | ~299 | 6 | LevelStats, AllLevelStats, Read/write amplification |
 | Phase 4: Advanced Features | ✅ | - | - | All features complete |
 | Phase 5: Stability & Quality | ✅ | - | - | Documentation & testing complete |
 
-**Total**: ~13,789 LOC | 221 tests passing | All CI green ✅
+**Total**: ~14,088 LOC | 227 tests passing | All CI green ✅
 
 ---
 
@@ -40,8 +41,8 @@ Complete Rust reimplementation of RocksDB with all core features and optimizatio
 
 | Metric | Current | Target | Status |
 |--------|---------|--------|--------|
-| LOC | 13,789 | ~50,000 | 28% ✅ |
-| Tests | 221 | >80% | Excellent ✅ |
+| LOC | 14,088 | ~50,000 | 28% ✅ |
+| Tests | 227 | >80% | Excellent ✅ |
 | Write Throughput | **105K ops/sec** | 100K | **Met!** ✅ |
 | Sequential Read | **773K ops/sec** | 200K | **3.9x!** ✅ |
 | **Random Read** | **4.3K ops/sec** | 3K | **1.4x!** ✅ |
@@ -75,28 +76,31 @@ Complete Rust reimplementation of RocksDB with all core features and optimizatio
 
 ## Recently Completed
 
-1. ✅ **Phase 6.1: Compaction Strategy Improvements**
+1. ✅ **Phase 6.2: Per-Level Statistics & Monitoring**
+   - LevelStats: per-level file count, size, reads, writes, compactions
+   - AllLevelStats: aggregate statistics across all levels
+   - Read/write amplification tracking
+   - Integrated with Version for automatic updates
+   - Results: Full observability of compaction behavior
+
+2. ✅ **Phase 6.1: Compaction Strategy Improvements**
    - CompactionPicker with priority-based scoring
    - Dynamic level target size calculation (10MB base, 10x multiplier)
    - Score > 1.0 triggers compaction (highest priority first)
    - Integrated compaction statistics tracking
    - Results: More intelligent compaction selection
 
-2. ✅ **Phase 5.7: Performance Optimization** (commit `b6a4ee2`)
+3. ✅ **Phase 5.7: Performance Optimization** (commit `b6a4ee2`)
    - Buffer pre-allocation in WAL encoding
    - Eliminated String clones in hot paths (put/get/delete)
    - Added #[inline] hints to frequently-called functions
    - Results: 10-15% performance improvements
 
-3. ✅ **Phase 4.3: Transactions** (commit `01e9ec7`)
-   - WriteBatch, Snapshot, OptimisticTransaction, TransactionDB
-   - Pessimistic locking with timeout-based deadlock prevention
-
 4. ✅ **Phase 5.5: TableCache Optimization** (commit `0ab43d4`)
    - 1.8x random read improvement (2.4K → 4.3K ops/sec)
 
-5. ✅ **Phase 5.6: Testing & Hardening**
-   - Crash recovery tests, Property-based tests
+5. ✅ **Phase 4.3: Transactions** (commit `01e9ec7`)
+   - WriteBatch, Snapshot, OptimisticTransaction, TransactionDB
 
 ---
 
@@ -151,5 +155,5 @@ Implement advanced compaction strategies for better space amplification and thro
 
 ---
 
-**Last Updated**: 2025-10-24 (Completed Phase 6.1: Compaction Strategy Improvements)
-**Next Review**: After further optimizations or testing
+**Last Updated**: 2025-10-24 (Completed Phase 6.2: Per-Level Statistics & Monitoring)
+**Next Review**: After further optimizations or next feature

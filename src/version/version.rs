@@ -1,6 +1,11 @@
+use std::sync::Arc;
+
 use crate::{
     util::Slice,
-    version::version_edit::{FileMetaData, NUM_LEVELS},
+    version::{
+        level_stats::AllLevelStats,
+        version_edit::{FileMetaData, NUM_LEVELS},
+    },
 };
 
 /// A Version represents a snapshot of all SSTables organized by levels
@@ -10,12 +15,24 @@ use crate::{
 pub struct Version {
     /// Files at each level
     pub files: Vec<Vec<FileMetaData>>,
+    /// Per-level statistics
+    pub level_stats: Arc<AllLevelStats>,
 }
 
 impl Version {
     pub fn new() -> Self {
         Version {
             files: vec![Vec::new(); NUM_LEVELS],
+            level_stats: Arc::new(AllLevelStats::new(NUM_LEVELS)),
+        }
+    }
+
+    /// Update level statistics based on current files
+    fn update_level_stats(&self, level: usize) {
+        if let Some(stats) = self.level_stats.level(level) {
+            let num_files = self.files[level].len() as u64;
+            let total_size: u64 = self.files[level].iter().map(|f| f.file_size).sum();
+            stats.update_files(num_files, total_size);
         }
     }
 
@@ -46,6 +63,7 @@ impl Version {
     pub fn add_file(&mut self, level: usize, file: FileMetaData) {
         if level < NUM_LEVELS {
             self.files[level].push(file);
+            self.update_level_stats(level);
             // Sort files at level 1+ by smallest key
             if level > 0 {
                 self.files[level].sort_by(|a, b| a.smallest.data().cmp(b.smallest.data()));
@@ -57,6 +75,7 @@ impl Version {
     pub fn remove_file(&mut self, level: usize, file_number: u64) {
         if level < NUM_LEVELS {
             self.files[level].retain(|f| f.number != file_number);
+            self.update_level_stats(level);
         }
     }
 
@@ -141,6 +160,12 @@ impl Version {
 
         let picker = CompactionPicker::new();
         picker.get_all_scores(self)
+    }
+
+    /// Get level statistics
+    #[inline]
+    pub fn level_stats(&self) -> &Arc<AllLevelStats> {
+        &self.level_stats
     }
 }
 
