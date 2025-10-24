@@ -31,10 +31,11 @@ Complete Rust reimplementation of RocksDB with all core features and optimizatio
 | Phase 6.1: Compaction Improvements | ✅ | ~267 | 6 | Dynamic level sizing, Priority scoring, Statistics tracking |
 | Phase 6.2: Per-Level Statistics | ✅ | ~299 | 6 | LevelStats, AllLevelStats, Read/write amplification |
 | Phase 6.3: Subcompaction Infrastructure | ✅ | ~369 | 7 | Key range splitting, Subcompaction planner, DBOptions |
+| Phase 6.4: Compaction Stress Tests | ✅ | ~366 | 6 | Concurrent writes, Large datasets, Mixed operations |
 | Phase 4: Advanced Features | ✅ | - | - | All features complete |
 | Phase 5: Stability & Quality | ✅ | - | - | Documentation & testing complete |
 
-**Total**: ~14,457 LOC | 234 tests passing | All CI green ✅
+**Total**: ~14,823 LOC | 240 tests passing | All CI green ✅
 
 ---
 
@@ -42,8 +43,8 @@ Complete Rust reimplementation of RocksDB with all core features and optimizatio
 
 | Metric | Current | Target | Status |
 |--------|---------|--------|--------|
-| LOC | 14,457 | ~50,000 | 29% ✅ |
-| Tests | 234 | >80% | Excellent ✅ |
+| LOC | 14,823 | ~50,000 | 30% ✅ |
+| Tests | 240 | >80% | Excellent ✅ |
 | Write Throughput | **105K ops/sec** | 100K | **Met!** ✅ |
 | Sequential Read | **773K ops/sec** | 200K | **3.9x!** ✅ |
 | **Random Read** | **4.3K ops/sec** | 3K | **1.4x!** ✅ |
@@ -77,35 +78,39 @@ Complete Rust reimplementation of RocksDB with all core features and optimizatio
 
 ## Recently Completed
 
-1. ✅ **Phase 6.3: Subcompaction Infrastructure**
+1. ✅ **Phase 6.4: Compaction Stress Tests**
+   - 6 comprehensive stress tests for compaction behavior
+   - Tests: concurrent writes, large datasets, overwrites, priority, concurrent reads, mixed ops
+   - Identified and fixed concurrent compaction race condition
+   - All 240 tests passing
+   - Results: Robust validation of compaction under stress
+
+2. ✅ **Phase 6.3: Subcompaction Infrastructure**
    - SubcompactionPlanner: splits large compactions into parallel subranges
    - Key range splitting based on file boundaries
    - Configurable via DBOptions (min size, enable/disable)
    - Infrastructure ready for parallel execution
    - Results: Foundation for parallel compaction (sequential for now)
 
-2. ✅ **Phase 6.2: Per-Level Statistics & Monitoring**
+3. ✅ **Phase 6.2: Per-Level Statistics & Monitoring**
    - LevelStats: per-level file count, size, reads, writes, compactions
    - AllLevelStats: aggregate statistics across all levels
    - Read/write amplification tracking
    - Integrated with Version for automatic updates
    - Results: Full observability of compaction behavior
 
-3. ✅ **Phase 6.1: Compaction Strategy Improvements**
+4. ✅ **Phase 6.1: Compaction Strategy Improvements**
    - CompactionPicker with priority-based scoring
    - Dynamic level target size calculation (10MB base, 10x multiplier)
    - Score > 1.0 triggers compaction (highest priority first)
    - Integrated compaction statistics tracking
    - Results: More intelligent compaction selection
 
-4. ✅ **Phase 5.7: Performance Optimization** (commit `b6a4ee2`)
+5. ✅ **Phase 5.7: Performance Optimization** (commit `b6a4ee2`)
    - Buffer pre-allocation in WAL encoding
    - Eliminated String clones in hot paths (put/get/delete)
    - Added #[inline] hints to frequently-called functions
    - Results: 10-15% performance improvements
-
-5. ✅ **Phase 5.5: TableCache Optimization** (commit `0ab43d4`)
-   - 1.8x random read improvement (2.4K → 4.3K ops/sec)
 
 ---
 
@@ -126,7 +131,7 @@ Complete Rust reimplementation of RocksDB with all core features and optimizatio
 - Compression (Snappy/LZ4)
 
 **Quality**: Comprehensive ✅
-- 215 tests (unit, integration, stress, property-based, crash recovery)
+- 240 tests (unit, integration, stress, property-based, crash recovery)
 - 2,287 LOC documentation
 - All CI passing across platforms
 
@@ -160,5 +165,5 @@ Implement advanced compaction strategies for better space amplification and thro
 
 ---
 
-**Last Updated**: 2025-10-24 (Completed Phase 6.3: Subcompaction Infrastructure)
-**Next Review**: After implementing actual parallel execution or next phase
+**Last Updated**: 2025-10-25 (Completed Phase 6.4: Compaction Stress Tests)
+**Next Review**: After next phase or major feature
