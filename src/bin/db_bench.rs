@@ -287,6 +287,7 @@ fn main() {
         error_if_exists: false,
         write_buffer_size: 4 * 1024 * 1024, // 4MB
         block_cache_size: config.cache_size,
+        table_cache_size: 100, // Keep up to 100 table files open
         compression_type: config.compression,
         filter_bits_per_key: if config.use_bloom_filter {
             Some(10)
