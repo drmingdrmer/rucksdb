@@ -21,3 +21,4 @@ example_db/
 
 # Claude
 .claude/
+*.proptest-regressions

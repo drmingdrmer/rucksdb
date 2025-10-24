@@ -36,6 +36,7 @@ impl Default for ReadOptions {
     }
 }
 
+#[derive(Clone)]
 pub struct DBOptions {
     pub create_if_missing: bool,
     pub error_if_exists: bool,

@@ -291,13 +291,23 @@ impl Iterator for MergingIterator {
             let current_key = entry.key.clone();
 
             // Advance the iterator that had the minimum key
-            let iter = &mut self.iterators[entry.index];
-            if iter.next()? {
-                // Still valid, push back to heap
-                self.heap.push(HeapEntry {
-                    key: iter.key(),
-                    index: entry.index,
-                });
+            // Keep advancing until user key changes or iterator exhausted
+            let idx = entry.index;
+            loop {
+                if !self.iterators[idx].next()? {
+                    break; // Iterator exhausted
+                }
+
+                let new_key = self.iterators[idx].key();
+                if new_key.data() != current_key.data() {
+                    // Different user key - add back to heap
+                    self.heap.push(HeapEntry {
+                        key: new_key,
+                        index: idx,
+                    });
+                    break;
+                }
+                // Same user key - keep advancing to skip old versions
             }
 
             // Skip all other iterators with the same key (lower priority duplicates)
@@ -312,12 +322,22 @@ impl Iterator for MergingIterator {
                 // Remove from heap
                 self.heap.retain(|e| e.index != idx);
 
-                // Advance the iterator
-                if self.iterators[idx].next()? {
-                    self.heap.push(HeapEntry {
-                        key: self.iterators[idx].key(),
-                        index: idx,
-                    });
+                // Keep advancing this iterator until user key changes
+                loop {
+                    if !self.iterators[idx].next()? {
+                        break; // Iterator exhausted
+                    }
+
+                    let new_key = self.iterators[idx].key();
+                    if new_key.data() != current_key.data() {
+                        // Different user key - add back to heap
+                        self.heap.push(HeapEntry {
+                            key: new_key,
+                            index: idx,
+                        });
+                        break;
+                    }
+                    // Same user key - keep advancing to skip old versions
                 }
             }
 

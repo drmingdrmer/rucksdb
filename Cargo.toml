@@ -17,6 +17,7 @@ tempfile = "3.8"
 
 [dev-dependencies]
 criterion = "0.5"
+proptest = "1.4"
 
 [[bin]]
 name = "db_bench"
