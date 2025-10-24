@@ -294,6 +294,8 @@ fn main() {
         } else {
             None
         },
+        enable_subcompaction: true,
+        subcompaction_min_size: 10 * 1024 * 1024,
     };
 
     let db = DB::open(db_path.to_str().unwrap(), options).unwrap();

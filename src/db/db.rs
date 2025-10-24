@@ -45,6 +45,8 @@ pub struct DBOptions {
     pub table_cache_size: usize,            // Number of table files to keep open
     pub compression_type: CompressionType,  // Compression algorithm for blocks
     pub filter_bits_per_key: Option<usize>, // Bloom filter bits per key (None = disabled)
+    pub enable_subcompaction: bool,         // Enable parallel subcompaction
+    pub subcompaction_min_size: u64,        // Minimum size to trigger subcompaction (bytes)
 }
 
 impl Default for DBOptions {
@@ -58,6 +60,8 @@ impl Default for DBOptions {
             table_cache_size: 100, // Keep up to 100 table files open
             compression_type: CompressionType::Snappy, // Snappy by default
             filter_bits_per_key: Some(10), // ~1% false positive rate
+            enable_subcompaction: true,
+            subcompaction_min_size: 10 * 1024 * 1024, // 10 MB
         }
     }
 }
