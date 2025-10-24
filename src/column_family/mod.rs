@@ -43,12 +43,14 @@ mod column_family_data;
 pub mod column_family_descriptor;
 pub mod column_family_handle;
 pub mod column_family_options;
+pub mod column_family_set;
 
 #[allow(unused_imports)]
 pub(crate) use column_family_data::ColumnFamilyData;
 pub use column_family_descriptor::ColumnFamilyDescriptor;
 pub use column_family_handle::ColumnFamilyHandle;
 pub use column_family_options::ColumnFamilyOptions;
+pub use column_family_set::ColumnFamilySet;
 
 /// Default column family name
 pub const DEFAULT_COLUMN_FAMILY_NAME: &str = "default";

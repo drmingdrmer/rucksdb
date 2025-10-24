@@ -1,9 +1,6 @@
-use std::{
-    path::Path,
-    sync::{Arc, RwLock},
-};
+use std::{path::Path, sync::Arc};
 
-use parking_lot::Mutex;
+use parking_lot::{Mutex, RwLock};
 
 use crate::{
     column_family::{ColumnFamilyHandle, ColumnFamilyOptions},
@@ -56,7 +53,7 @@ pub struct ColumnFamilyData {
 
     /// Sequence number for this CF
     /// Each CF maintains its own sequence for MVCC
-    sequence: Arc<Mutex<u64>>,
+    pub(crate) sequence: Arc<Mutex<u64>>,
 
     /// Version set for this CF (SSTable history)
     version_set: Arc<RwLock<VersionSet>>,
@@ -133,7 +130,7 @@ impl ColumnFamilyData {
 
     /// Check if MemTable should be flushed
     pub fn should_flush(&self) -> bool {
-        let mem = self.mem.read().unwrap();
+        let mem = self.mem.read();
         mem.approximate_memory_usage() >= self.options.write_buffer_size
     }
 
@@ -141,12 +138,12 @@ impl ColumnFamilyData {
     ///
     /// Returns true if rotation successful, false if immutable already exists
     pub fn make_immutable(&self) -> bool {
-        let mut imm = self.imm.write().unwrap();
+        let mut imm = self.imm.write();
         if imm.is_some() {
             return false; // Already have immutable, wait for flush
         }
 
-        let mut mem = self.mem.write().unwrap();
+        let mut mem = self.mem.write();
         let old_mem = std::mem::take(&mut *mem);
         *imm = Some(old_mem);
         true
@@ -154,7 +151,7 @@ impl ColumnFamilyData {
 
     /// Clear immutable MemTable after successful flush
     pub fn clear_immutable(&self) {
-        let mut imm = self.imm.write().unwrap();
+        let mut imm = self.imm.write();
         *imm = None;
     }
 }

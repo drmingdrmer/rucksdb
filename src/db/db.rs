@@ -1,21 +1,19 @@
 use std::{
     fs,
     path::{Path, PathBuf},
-    sync::{
-        Arc,
-        atomic::{AtomicU64, Ordering},
-    },
+    sync::Arc,
 };
 
 use parking_lot::RwLock;
 
 use crate::{
     cache::LRUCache,
+    column_family::{ColumnFamilyHandle, ColumnFamilySet},
     filter::{BloomFilterPolicy, FilterPolicy},
     memtable::MemTable,
     table::{CompressionType, TableBuilder, TableReader},
     util::{Result, Slice, Status},
-    version::{FileMetaData, VersionEdit, VersionSet},
+    version::{FileMetaData, VersionEdit},
     wal,
 };
 
@@ -63,15 +61,16 @@ impl Default for DBOptions {
 }
 
 pub struct DB {
-    mem: Arc<RwLock<MemTable>>,
-    imm: Arc<RwLock<Option<MemTable>>>, // Immutable MemTable being flushed
-    sequence: Arc<AtomicU64>,
+    /// Manages all column families
+    column_families: Arc<ColumnFamilySet>,
+    /// Write-ahead log (shared across all CFs)
     wal: Arc<RwLock<Option<wal::Writer>>>,
+    /// Database directory path
     db_path: PathBuf,
+    /// Global database options
     options: DBOptions,
-    // Version management
-    version_set: Arc<RwLock<VersionSet>>,
-    // Block cache: (file_number, block_offset) -> block_data
+    /// Block cache shared across all CFs: (file_number, block_offset) ->
+    /// block_data
     block_cache: LRUCache<(u64, u64), Vec<u8>>,
 }
 
@@ -89,20 +88,28 @@ impl DB {
             return Err(Status::invalid_argument("Database already exists"));
         }
 
+        // Create ColumnFamilySet with default CF
+        let cf_set = Arc::new(ColumnFamilySet::new(name)?);
+
         let wal_path = db_path.join("wal.log");
-        let mem = Arc::new(RwLock::new(MemTable::new()));
 
-        // Initialize VersionSet
-        let mut version_set = VersionSet::new(db_path);
-        version_set.open_or_create()?;
+        // Get default CF for WAL recovery
+        let default_cf = cf_set.default_cf();
+        let mem = default_cf.mem();
+        let sequence = default_cf.sequence.clone();
 
-        let sequence = Arc::new(AtomicU64::new(version_set.last_sequence()));
+        // Initialize VersionSet (managed per-CF now)
+        {
+            let version_set = default_cf.version_set();
+            let mut vs = version_set.write();
+            vs.open_or_create()?;
 
-        // Recover from WAL if exists
-        if wal_path.exists() {
-            Self::recover_from_wal(&wal_path, &mem, &sequence)?;
-            // Update VersionSet with recovered sequence
-            version_set.set_last_sequence(sequence.load(Ordering::SeqCst));
+            // Recover from WAL if exists
+            if wal_path.exists() {
+                Self::recover_from_wal(&wal_path, &mem, &sequence)?;
+                // Update VersionSet with recovered sequence
+                vs.set_last_sequence(*sequence.lock());
+            }
         }
 
         // Open WAL for writing
@@ -112,13 +119,10 @@ impl DB {
         let block_cache = LRUCache::new(options.block_cache_size);
 
         Ok(DB {
-            mem,
-            imm: Arc::new(RwLock::new(None)),
-            sequence,
+            column_families: cf_set,
             wal: Arc::new(RwLock::new(Some(wal_writer))),
             db_path: db_path.to_path_buf(),
             options,
-            version_set: Arc::new(RwLock::new(version_set)),
             block_cache,
         })
     }
@@ -132,8 +136,8 @@ impl DB {
     /// Recover data from WAL
     fn recover_from_wal(
         wal_path: &Path,
-        mem: &Arc<RwLock<MemTable>>,
-        sequence: &Arc<AtomicU64>,
+        mem: &Arc<parking_lot::RwLock<MemTable>>,
+        sequence: &Arc<parking_lot::Mutex<u64>>,
     ) -> Result<()> {
         let mut reader = wal::Reader::new(wal_path)?;
         let mut max_seq = 0u64;
@@ -154,7 +158,7 @@ impl DB {
             }
         }
 
-        sequence.store(max_seq + 1, Ordering::SeqCst);
+        *sequence.lock() = max_seq + 1;
         Ok(())
     }
 
@@ -221,7 +225,23 @@ impl DB {
     }
 
     pub fn put(&self, options: &WriteOptions, key: Slice, value: Slice) -> Result<()> {
-        let seq = self.sequence.fetch_add(1, Ordering::SeqCst);
+        let default_cf = self.column_families.default_cf();
+        self.put_cf(options, &default_cf.handle().clone(), key, value)
+    }
+
+    pub fn put_cf(
+        &self,
+        options: &WriteOptions,
+        cf_handle: &ColumnFamilyHandle,
+        key: Slice,
+        value: Slice,
+    ) -> Result<()> {
+        let cf = self
+            .column_families
+            .get_cf(cf_handle)
+            .ok_or_else(|| Status::invalid_argument("Column family not found"))?;
+
+        let seq = cf.next_sequence();
 
         // Write to WAL first
         let record = Self::encode_wal_record(seq, &key, Some(&value));
@@ -236,24 +256,42 @@ impl DB {
         }
 
         // Then write to MemTable
-        let mem = self.mem.read();
-        mem.add(seq, key, value);
+        let mem = cf.mem();
+        let mem_guard = mem.read();
+        mem_guard.add(seq, key, value);
 
         // Check if we need to flush
-        if self.should_flush() {
-            drop(mem);
-            self.make_immutable();
-            self.flush_memtable()?;
+        if cf.should_flush() {
+            drop(mem_guard);
+            if cf.make_immutable() {
+                self.flush_memtable_cf(&cf)?;
+            }
         }
 
         Ok(())
     }
 
-    pub fn get(&self, _options: &ReadOptions, key: &Slice) -> Result<Option<Slice>> {
+    pub fn get(&self, options: &ReadOptions, key: &Slice) -> Result<Option<Slice>> {
+        let default_cf = self.column_families.default_cf();
+        self.get_cf(options, &default_cf.handle().clone(), key)
+    }
+
+    pub fn get_cf(
+        &self,
+        _options: &ReadOptions,
+        cf_handle: &ColumnFamilyHandle,
+        key: &Slice,
+    ) -> Result<Option<Slice>> {
+        let cf = self
+            .column_families
+            .get_cf(cf_handle)
+            .ok_or_else(|| Status::invalid_argument("Column family not found"))?;
+
         // First check mutable MemTable
         {
-            let mem = self.mem.read();
-            let (found, value) = mem.get(key);
+            let mem = cf.mem();
+            let mem_guard = mem.read();
+            let (found, value) = mem_guard.get(key);
             if found {
                 // Key exists in MemTable (either with value or deleted)
                 return Ok(value);
@@ -262,8 +300,9 @@ impl DB {
 
         // Then check immutable MemTable
         {
-            let imm = self.imm.read();
-            if let Some(imm_table) = imm.as_ref()
+            let imm = cf.imm();
+            let imm_guard = imm.read();
+            if let Some(imm_table) = imm_guard.as_ref()
                 && let (true, value) = imm_table.get(key)
             {
                 return Ok(value);
@@ -271,8 +310,9 @@ impl DB {
         }
 
         // Then check SSTables through VersionSet
-        let version_set = self.version_set.read();
-        let current = version_set.current();
+        let version_set = cf.version_set();
+        let version_set_guard = version_set.read();
+        let current = version_set_guard.current();
         let version = current.read();
 
         // Check level 0 first (newest files have highest numbers)
@@ -297,6 +337,12 @@ impl DB {
         Ok(None)
     }
 
+    /// Create an iterator for scanning the database (default CF)
+    pub fn iter(&self) -> Result<Box<dyn crate::iterator::Iterator>> {
+        let default_cf = self.column_families.default_cf();
+        self.iter_cf(&default_cf.handle().clone())
+    }
+
     /// Create an iterator for scanning the database
     ///
     /// Returns a MergingIterator that combines all data sources in priority
@@ -310,26 +356,37 @@ impl DB {
     /// - Shadowing: Newer values override older ones for the same key
     /// - Deletion markers: Deleted keys are filtered out
     /// - Multi-level merge: Efficient O(log k) seek and next operations
-    pub fn iter(&self) -> Result<Box<dyn crate::iterator::Iterator>> {
+    pub fn iter_cf(
+        &self,
+        cf_handle: &ColumnFamilyHandle,
+    ) -> Result<Box<dyn crate::iterator::Iterator>> {
+        let cf = self
+            .column_families
+            .get_cf(cf_handle)
+            .ok_or_else(|| Status::invalid_argument("Column family not found"))?;
+
         let mut iterators: Vec<Box<dyn crate::iterator::Iterator>> = Vec::new();
 
         // 1. Active MemTable (highest priority)
         {
-            let mem = self.mem.read();
-            iterators.push(Box::new(mem.iter()));
+            let mem = cf.mem();
+            let mem_guard = mem.read();
+            iterators.push(Box::new(mem_guard.iter()));
         }
 
         // 2. Immutable MemTable (if exists)
         {
-            let imm = self.imm.read();
-            if let Some(imm_table) = imm.as_ref() {
+            let imm = cf.imm();
+            let imm_guard = imm.read();
+            if let Some(imm_table) = imm_guard.as_ref() {
                 iterators.push(Box::new(imm_table.iter()));
             }
         }
 
         // 3. SSTables from VersionSet
-        let version_set = self.version_set.read();
-        let current = version_set.current();
+        let version_set = cf.version_set();
+        let version_set_guard = version_set.read();
+        let current = version_set_guard.current();
         let version = current.read();
 
         // Level 0: Add in reverse order (newest files first for priority)
@@ -355,7 +412,22 @@ impl DB {
     }
 
     pub fn delete(&self, options: &WriteOptions, key: Slice) -> Result<()> {
-        let seq = self.sequence.fetch_add(1, Ordering::SeqCst);
+        let default_cf = self.column_families.default_cf();
+        self.delete_cf(options, &default_cf.handle().clone(), key)
+    }
+
+    pub fn delete_cf(
+        &self,
+        options: &WriteOptions,
+        cf_handle: &ColumnFamilyHandle,
+        key: Slice,
+    ) -> Result<()> {
+        let cf = self
+            .column_families
+            .get_cf(cf_handle)
+            .ok_or_else(|| Status::invalid_argument("Column family not found"))?;
+
+        let seq = cf.next_sequence();
 
         // Write to WAL first
         let record = Self::encode_wal_record(seq, &key, None);
@@ -370,8 +442,9 @@ impl DB {
         }
 
         // Then write to MemTable
-        let mem = self.mem.read();
-        mem.delete(seq, key);
+        let mem = cf.mem();
+        let mem_guard = mem.read();
+        mem_guard.delete(seq, key);
         Ok(())
     }
 
@@ -384,12 +457,32 @@ impl DB {
         self.block_cache.stats()
     }
 
-    /// Flush MemTable to SSTable
-    fn flush_memtable(&self) -> Result<()> {
+    /// Create a new column family
+    pub fn create_column_family(
+        &self,
+        name: &str,
+        options: crate::column_family::ColumnFamilyOptions,
+    ) -> Result<ColumnFamilyHandle> {
+        self.column_families.create_cf(name.to_string(), options)
+    }
+
+    /// Drop a column family
+    pub fn drop_column_family(&self, cf_handle: &ColumnFamilyHandle) -> Result<()> {
+        self.column_families.drop_cf(cf_handle)
+    }
+
+    /// List all column families
+    pub fn list_column_families(&self) -> Vec<ColumnFamilyHandle> {
+        self.column_families.list_column_families()
+    }
+
+    /// Flush MemTable to SSTable for a specific CF
+    fn flush_memtable_cf(&self, cf: &Arc<crate::column_family::ColumnFamilyData>) -> Result<()> {
         // Get all entries from immutable MemTable
         let entries = {
-            let imm = self.imm.read();
-            match imm.as_ref() {
+            let imm = cf.imm();
+            let imm_guard = imm.read();
+            match imm_guard.as_ref() {
                 Some(imm_table) => imm_table.collect_entries(),
                 None => return Ok(()), // Nothing to flush
             }
@@ -397,15 +490,15 @@ impl DB {
 
         if entries.is_empty() {
             // Clear empty immutable MemTable
-            let mut imm = self.imm.write();
-            *imm = None;
+            cf.clear_immutable();
             return Ok(());
         }
 
         // Generate new SSTable file
         let file_num = {
-            let version_set = self.version_set.read();
-            version_set.new_file_number()
+            let version_set = cf.version_set();
+            let version_set_guard = version_set.read();
+            version_set_guard.new_file_number()
         };
         let sst_path = self.db_path.join(format!("{file_num:06}.sst"));
 
@@ -427,21 +520,20 @@ impl DB {
         let file_meta = FileMetaData::new(file_num, file_size, smallest, largest);
         let mut edit = VersionEdit::new();
         edit.add_file(0, file_meta); // Always flush to Level 0
-        edit.set_last_sequence(self.sequence.load(Ordering::SeqCst));
+        edit.set_last_sequence(cf.current_sequence());
 
         // Apply edit to VersionSet
         {
-            let version_set = self.version_set.read();
-            version_set.log_and_apply(edit)?;
+            let version_set = cf.version_set();
+            let version_set_guard = version_set.read();
+            version_set_guard.log_and_apply(edit)?;
         }
 
         // Clear immutable MemTable (mem continues to accept writes)
-        {
-            let mut imm = self.imm.write();
-            *imm = None;
-        }
+        cf.clear_immutable();
 
         // Clear WAL (all data is now persisted)
+        // TODO: Multi-CF WAL needs per-CF tracking
         {
             let wal_path = self.db_path.join("wal.log");
             let mut wal_guard = self.wal.write();
@@ -449,17 +541,6 @@ impl DB {
         }
 
         Ok(())
-    }
-
-    fn should_flush(&self) -> bool {
-        let mem = self.mem.read();
-        if mem.approximate_memory_usage() < self.options.write_buffer_size {
-            return false;
-        }
-
-        // Only return true if imm is empty (no flush in progress)
-        let imm = self.imm.read();
-        imm.is_none()
     }
 
     /// Create a TableBuilder with configured compression and filter options
@@ -471,28 +552,28 @@ impl DB {
         TableBuilder::new_with_filter(path, filter_policy)
     }
 
-    /// Move current MemTable to immutable and create new one
-    fn make_immutable(&self) {
-        let mut mem_guard = self.mem.write();
-        let mut imm_guard = self.imm.write();
-
-        // Only move if imm is empty
-        if imm_guard.is_none() {
-            let old_mem = std::mem::take(&mut *mem_guard);
-            *imm_guard = Some(old_mem);
-        }
+    /// Compact a level by merging files into the next level (default CF)
+    pub fn compact_level(&self, level: usize) -> Result<()> {
+        let default_cf = self.column_families.default_cf();
+        self.compact_level_cf(&default_cf.handle().clone(), level)
     }
 
-    /// Compact a level by merging files into the next level
-    pub fn compact_level(&self, level: usize) -> Result<()> {
+    /// Compact a level for a specific CF
+    pub fn compact_level_cf(&self, cf_handle: &ColumnFamilyHandle, level: usize) -> Result<()> {
         if level >= 6 {
             return Ok(()); // No compaction for last level
         }
 
+        let cf = self
+            .column_families
+            .get_cf(cf_handle)
+            .ok_or_else(|| Status::invalid_argument("Column family not found"))?;
+
         // Get files to compact
         let (level_files, next_level_files) = {
-            let version_set = self.version_set.read();
-            let current = version_set.current();
+            let version_set = cf.version_set();
+            let version_set_guard = version_set.read();
+            let current = version_set_guard.current();
             let version = current.read();
 
             let level_files: Vec<FileMetaData> = version.get_level_files(level).to_vec();
@@ -542,8 +623,9 @@ impl DB {
 
         // Write new file to next level
         let file_num = {
-            let version_set = self.version_set.read();
-            version_set.new_file_number()
+            let version_set = cf.version_set();
+            let version_set_guard = version_set.read();
+            version_set_guard.new_file_number()
         };
         let sst_path = self.db_path.join(format!("{file_num:06}.sst"));
 
@@ -577,8 +659,9 @@ impl DB {
 
         // Apply edit
         {
-            let version_set = self.version_set.read();
-            version_set.log_and_apply(edit)?;
+            let version_set = cf.version_set();
+            let version_set_guard = version_set.read();
+            version_set_guard.log_and_apply(edit)?;
         }
 
         // Delete old SSTable files
@@ -599,17 +682,29 @@ impl DB {
         table.scan_all()
     }
 
-    /// Try to compact if needed
+    /// Try to compact if needed (default CF)
     pub fn maybe_compact(&self) -> Result<()> {
+        let default_cf = self.column_families.default_cf();
+        self.maybe_compact_cf(&default_cf.handle().clone())
+    }
+
+    /// Try to compact if needed for a specific CF
+    pub fn maybe_compact_cf(&self, cf_handle: &ColumnFamilyHandle) -> Result<()> {
+        let cf = self
+            .column_families
+            .get_cf(cf_handle)
+            .ok_or_else(|| Status::invalid_argument("Column family not found"))?;
+
         let level = {
-            let version_set = self.version_set.read();
-            let current = version_set.current();
+            let version_set = cf.version_set();
+            let version_set_guard = version_set.read();
+            let current = version_set_guard.current();
             let version = current.read();
             version.pick_compaction_level()
         };
 
         if let Some(level) = level {
-            self.compact_level(level)?;
+            self.compact_level_cf(cf_handle, level)?;
         }
 
         Ok(())
@@ -841,5 +936,63 @@ mod tests {
         );
         assert_eq!(collected[0], (Slice::from("key1"), Slice::from("value1")));
         assert_eq!(collected[1], (Slice::from("key3"), Slice::from("value3")));
+    }
+
+    #[test]
+    fn test_multi_column_family() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test_db");
+        let db = DB::open(db_path.to_str().unwrap(), DBOptions::default()).unwrap();
+
+        // Create two column families
+        let users_cf = db
+            .create_column_family(
+                "users",
+                crate::column_family::ColumnFamilyOptions::default(),
+            )
+            .unwrap();
+        let posts_cf = db
+            .create_column_family(
+                "posts",
+                crate::column_family::ColumnFamilyOptions::default(),
+            )
+            .unwrap();
+
+        // Write to different CFs
+        db.put_cf(
+            &WriteOptions::default(),
+            &users_cf,
+            Slice::from("user1"),
+            Slice::from("alice"),
+        )
+        .unwrap();
+        db.put_cf(
+            &WriteOptions::default(),
+            &posts_cf,
+            Slice::from("post1"),
+            Slice::from("hello world"),
+        )
+        .unwrap();
+
+        // Verify data in each CF
+        let user = db
+            .get_cf(&ReadOptions::default(), &users_cf, &Slice::from("user1"))
+            .unwrap();
+        assert_eq!(user, Some(Slice::from("alice")));
+
+        let post = db
+            .get_cf(&ReadOptions::default(), &posts_cf, &Slice::from("post1"))
+            .unwrap();
+        assert_eq!(post, Some(Slice::from("hello world")));
+
+        // Verify isolation: post1 doesn't exist in users CF
+        let not_found = db
+            .get_cf(&ReadOptions::default(), &users_cf, &Slice::from("post1"))
+            .unwrap();
+        assert_eq!(not_found, None);
+
+        // List CFs
+        let cfs = db.list_column_families();
+        assert_eq!(cfs.len(), 3); // default, users, posts
     }
 }
