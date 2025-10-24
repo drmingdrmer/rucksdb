@@ -578,6 +578,33 @@ impl DB {
         &self.statistics
     }
 
+    /// Get the database path
+    pub(crate) fn db_path(&self) -> &PathBuf {
+        &self.db_path
+    }
+
+    /// Get reference to column families (for checkpoint)
+    pub(crate) fn column_families(&self) -> &Arc<ColumnFamilySet> {
+        &self.column_families
+    }
+
+    /// Flush all column families' MemTables to SSTables
+    ///
+    /// This ensures all data is persisted to SSTables, which is required
+    /// before creating a checkpoint or backup.
+    pub(crate) fn flush_all_column_families(&self) -> Result<()> {
+        // For now, just flush the default CF
+        // TODO: Extend to all CFs when multi-CF flush is implemented
+        let default_cf = self.column_families.default_cf();
+
+        // Make immutable and flush if there's data
+        if default_cf.make_immutable() {
+            self.flush_memtable_cf(&default_cf)?;
+        }
+
+        Ok(())
+    }
+
     /// Create a new column family
     pub fn create_column_family(
         &self,

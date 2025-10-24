@@ -4,6 +4,7 @@
 #![feature(const_trait_impl)]
 
 pub mod cache;
+pub mod checkpoint;
 pub mod column_family;
 pub mod compression;
 pub mod db;
@@ -16,6 +17,7 @@ pub mod util;
 pub mod version;
 pub mod wal;
 
+pub use checkpoint::Checkpoint;
 pub use column_family::{
     ColumnFamilyDescriptor, ColumnFamilyHandle, ColumnFamilyOptions, DEFAULT_COLUMN_FAMILY_NAME,
 };
