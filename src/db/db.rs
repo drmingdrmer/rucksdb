@@ -268,8 +268,13 @@ impl DB {
 
     /// Encode WAL record: op_type(1) + cf_id(4) + seq(8) + key_len(2) + key +
     /// [value_len(2) + value]
+    #[inline]
     fn encode_wal_record(cf_id: u32, seq: u64, key: &Slice, value: Option<&Slice>) -> Vec<u8> {
-        let mut buf = Vec::new();
+        // Pre-allocate buffer with exact capacity to avoid reallocations
+        // op_type(1) + cf_id(4) + seq(8) + key_len(2) + key + [value_len(2) + value]
+        let key_data = key.data();
+        let capacity = 15 + key_data.len() + value.as_ref().map_or(0, |v| 2 + v.data().len());
+        let mut buf = Vec::with_capacity(capacity);
 
         // Operation type: 1=Put, 2=Delete
         buf.push(if value.is_some() { 1 } else { 2 });
@@ -281,7 +286,6 @@ impl DB {
         buf.extend_from_slice(&seq.to_le_bytes());
 
         // Key
-        let key_data = key.data();
         buf.extend_from_slice(&(key_data.len() as u16).to_le_bytes());
         buf.extend_from_slice(key_data);
 
@@ -333,9 +337,10 @@ impl DB {
         Ok((cf_id, seq, key, value))
     }
 
+    #[inline]
     pub fn put(&self, options: &WriteOptions, key: Slice, value: Slice) -> Result<()> {
         let default_cf = self.column_families.default_cf();
-        self.put_cf(options, &default_cf.handle().clone(), key, value)
+        self.put_cf(options, default_cf.handle(), key, value)
     }
 
     pub fn put_cf(
@@ -384,9 +389,10 @@ impl DB {
         Ok(())
     }
 
+    #[inline]
     pub fn get(&self, options: &ReadOptions, key: &Slice) -> Result<Option<Slice>> {
         let default_cf = self.column_families.default_cf();
-        self.get_cf(options, &default_cf.handle().clone(), key)
+        self.get_cf(options, default_cf.handle(), key)
     }
 
     pub fn get_cf(
@@ -543,9 +549,10 @@ impl DB {
         Ok(Box::new(crate::iterator::MergingIterator::new(iterators)))
     }
 
+    #[inline]
     pub fn delete(&self, options: &WriteOptions, key: Slice) -> Result<()> {
         let default_cf = self.column_families.default_cf();
-        self.delete_cf(options, &default_cf.handle().clone(), key)
+        self.delete_cf(options, default_cf.handle(), key)
     }
 
     pub fn delete_cf(
