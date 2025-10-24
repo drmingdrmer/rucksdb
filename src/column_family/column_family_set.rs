@@ -48,7 +48,7 @@ pub struct ColumnFamilySet {
 
 impl ColumnFamilySet {
     /// Create a new ColumnFamilySet with default CF
-    pub fn new(db_path: &str) -> Result<Self> {
+    pub fn new(db_path: &str, default_cf_options: ColumnFamilyOptions) -> Result<Self> {
         let mut cfs = HashMap::new();
         let mut name_map = HashMap::new();
 
@@ -56,7 +56,7 @@ impl ColumnFamilySet {
         let default_cf = Arc::new(ColumnFamilyData::new(
             0,
             crate::column_family::DEFAULT_COLUMN_FAMILY_NAME.to_string(),
-            ColumnFamilyOptions::default(),
+            default_cf_options,
             db_path,
         ));
 
@@ -237,7 +237,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let db_path = temp_dir.path().to_str().unwrap();
 
-        let cf_set = ColumnFamilySet::new(db_path).unwrap();
+        let cf_set = ColumnFamilySet::new(db_path, ColumnFamilyOptions::default()).unwrap();
         assert_eq!(cf_set.count(), 1); // Only default CF
 
         let default_cf = cf_set.default_cf();
@@ -250,7 +250,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let db_path = temp_dir.path().to_str().unwrap();
 
-        let cf_set = ColumnFamilySet::new(db_path).unwrap();
+        let cf_set = ColumnFamilySet::new(db_path, ColumnFamilyOptions::default()).unwrap();
 
         // Create new CF
         let handle = cf_set
@@ -274,7 +274,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let db_path = temp_dir.path().to_str().unwrap();
 
-        let cf_set = ColumnFamilySet::new(db_path).unwrap();
+        let cf_set = ColumnFamilySet::new(db_path, ColumnFamilyOptions::default()).unwrap();
 
         cf_set
             .create_cf("users".to_string(), ColumnFamilyOptions::default())
@@ -290,7 +290,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let db_path = temp_dir.path().to_str().unwrap();
 
-        let cf_set = ColumnFamilySet::new(db_path).unwrap();
+        let cf_set = ColumnFamilySet::new(db_path, ColumnFamilyOptions::default()).unwrap();
 
         let handle = cf_set
             .create_cf("users".to_string(), ColumnFamilyOptions::default())
@@ -311,7 +311,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let db_path = temp_dir.path().to_str().unwrap();
 
-        let cf_set = ColumnFamilySet::new(db_path).unwrap();
+        let cf_set = ColumnFamilySet::new(db_path, ColumnFamilyOptions::default()).unwrap();
         let default_handle = cf_set.default_cf().handle().clone();
 
         let result = cf_set.drop_cf(&default_handle);
@@ -323,7 +323,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let db_path = temp_dir.path().to_str().unwrap();
 
-        let cf_set = ColumnFamilySet::new(db_path).unwrap();
+        let cf_set = ColumnFamilySet::new(db_path, ColumnFamilyOptions::default()).unwrap();
 
         cf_set
             .create_cf("users".to_string(), ColumnFamilyOptions::default())

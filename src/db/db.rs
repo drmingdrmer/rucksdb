@@ -88,8 +88,14 @@ impl DB {
             return Err(Status::invalid_argument("Database already exists"));
         }
 
-        // Create ColumnFamilySet with default CF
-        let cf_set = Arc::new(ColumnFamilySet::new(name)?);
+        // Create ColumnFamilySet with default CF using global options
+        let default_cf_options = crate::column_family::ColumnFamilyOptions {
+            write_buffer_size: options.write_buffer_size,
+            compression_type: options.compression_type,
+            filter_bits_per_key: options.filter_bits_per_key,
+            block_cache_size: options.block_cache_size,
+        };
+        let cf_set = Arc::new(ColumnFamilySet::new(name, default_cf_options)?);
 
         let wal_path = db_path.join("wal.log");
 

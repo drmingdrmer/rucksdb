@@ -1,9 +1,7 @@
 use rucksdb::{DB, DBOptions, ReadOptions, Slice, WriteOptions};
 use tempfile::TempDir;
 
-// TODO: Fix test after CF refactoring - data may still be in MemTable
 #[test]
-#[ignore]
 fn test_block_cache_hit_rate() {
     let temp_dir = TempDir::new().unwrap();
     let db_path = temp_dir.path().join("test_db");
