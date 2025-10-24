@@ -310,9 +310,52 @@ fn main() {
     let mut iter_stats = bench_seq_read_iter(&db, &config);
     iter_stats.print_summary("Sequential Read with Iterator (readseq)");
 
-    // Print cache statistics if available
+    // Print cache statistics
+    let block_cache_stats = db.cache_stats();
+    let table_cache_stats = db.table_cache_stats();
     println!("\n📊 Cache Statistics:");
-    println!("  (Cache stats implementation pending)");
+    println!("\n  Block Cache:");
+    println!(
+        "    Hits:         {:>12}",
+        format_number(block_cache_stats.hits as usize)
+    );
+    println!(
+        "    Misses:       {:>12}",
+        format_number(block_cache_stats.misses as usize)
+    );
+    println!(
+        "    Hit Rate:     {:>12.2}%",
+        block_cache_stats.hit_rate() * 100.0
+    );
+    println!(
+        "    Entries:      {:>12}",
+        format_number(block_cache_stats.entries)
+    );
+    println!(
+        "    Capacity:     {:>12}",
+        format_number(block_cache_stats.capacity)
+    );
+    println!("\n  Table Cache:");
+    println!(
+        "    Hits:         {:>12}",
+        format_number(table_cache_stats.hits as usize)
+    );
+    println!(
+        "    Misses:       {:>12}",
+        format_number(table_cache_stats.misses as usize)
+    );
+    println!(
+        "    Hit Rate:     {:>12.2}%",
+        table_cache_stats.hit_rate() * 100.0
+    );
+    println!(
+        "    Entries:      {:>12}",
+        format_number(table_cache_stats.entries)
+    );
+    println!(
+        "    Capacity:     {:>12}",
+        format_number(table_cache_stats.capacity)
+    );
 
     println!("\n✅ Benchmark completed!");
 }

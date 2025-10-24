@@ -32,10 +32,11 @@ Complete Rust reimplementation of RocksDB with all core features and optimizatio
 | Phase 6.2: Per-Level Statistics | ✅ | ~299 | 6 | LevelStats, AllLevelStats, Read/write amplification |
 | Phase 6.3: Subcompaction Infrastructure | ✅ | ~369 | 7 | Key range splitting, Subcompaction planner, DBOptions |
 | Phase 6.4: Compaction Stress Tests | ✅ | ~366 | 6 | Concurrent writes, Large datasets, Mixed operations |
+| Phase 6.5: Cache Statistics | ✅ | ~18 | 0 | Table cache stats API, Block/Table cache hit rates |
 | Phase 4: Advanced Features | ✅ | - | - | All features complete |
 | Phase 5: Stability & Quality | ✅ | - | - | Documentation & testing complete |
 
-**Total**: ~14,823 LOC | 240 tests passing | All CI green ✅
+**Total**: ~15,019 LOC | 239 tests passing | All CI green ✅
 
 ---
 
@@ -78,39 +79,40 @@ Complete Rust reimplementation of RocksDB with all core features and optimizatio
 
 ## Recently Completed
 
-1. ✅ **Phase 6.4: Compaction Stress Tests**
+1. ✅ **Phase 6.5: Cache Statistics**
+   - Added `table_cache_stats()` method to DB API
+   - Integrated cache statistics display in db_bench
+   - Block cache: 90.94% hit rate (1.1M hits, 113K misses)
+   - Table cache: ~100% hit rate (1.2M hits, 24 initial misses)
+   - Results: Full visibility into cache performance
+
+2. ✅ **Phase 6.4: Compaction Stress Tests**
    - 6 comprehensive stress tests for compaction behavior
    - Tests: concurrent writes, large datasets, overwrites, priority, concurrent reads, mixed ops
    - Identified and fixed concurrent compaction race condition
-   - All 240 tests passing
+   - All 239 tests passing
    - Results: Robust validation of compaction under stress
 
-2. ✅ **Phase 6.3: Subcompaction Infrastructure**
+3. ✅ **Phase 6.3: Subcompaction Infrastructure**
    - SubcompactionPlanner: splits large compactions into parallel subranges
    - Key range splitting based on file boundaries
    - Configurable via DBOptions (min size, enable/disable)
    - Infrastructure ready for parallel execution
    - Results: Foundation for parallel compaction (sequential for now)
 
-3. ✅ **Phase 6.2: Per-Level Statistics & Monitoring**
+4. ✅ **Phase 6.2: Per-Level Statistics & Monitoring**
    - LevelStats: per-level file count, size, reads, writes, compactions
    - AllLevelStats: aggregate statistics across all levels
    - Read/write amplification tracking
    - Integrated with Version for automatic updates
    - Results: Full observability of compaction behavior
 
-4. ✅ **Phase 6.1: Compaction Strategy Improvements**
+5. ✅ **Phase 6.1: Compaction Strategy Improvements**
    - CompactionPicker with priority-based scoring
    - Dynamic level target size calculation (10MB base, 10x multiplier)
    - Score > 1.0 triggers compaction (highest priority first)
    - Integrated compaction statistics tracking
    - Results: More intelligent compaction selection
-
-5. ✅ **Phase 5.7: Performance Optimization** (commit `b6a4ee2`)
-   - Buffer pre-allocation in WAL encoding
-   - Eliminated String clones in hot paths (put/get/delete)
-   - Added #[inline] hints to frequently-called functions
-   - Results: 10-15% performance improvements
 
 ---
 
@@ -165,5 +167,5 @@ Implement advanced compaction strategies for better space amplification and thro
 
 ---
 
-**Last Updated**: 2025-10-25 (Completed Phase 6.4: Compaction Stress Tests)
+**Last Updated**: 2025-10-25 (Completed Phase 6.5: Cache Statistics)
 **Next Review**: After next phase or major feature

@@ -984,6 +984,11 @@ impl DB {
     pub fn default_cf(&self) -> ColumnFamilyHandle {
         self.column_families.default_cf().handle().clone()
     }
+
+    /// Get table cache statistics
+    pub fn table_cache_stats(&self) -> crate::cache::TableCacheStats {
+        self.table_cache.stats()
+    }
 }
 
 #[cfg(test)]
