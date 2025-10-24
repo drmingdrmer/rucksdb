@@ -19,12 +19,13 @@ Complete Rust reimplementation of RocksDB with all core features and optimizatio
 | Phase 3.5: Code Quality | ✅ | ~149 | 0 | Rust 2024, Custom LRU, #[inline], Documentation |
 | Phase 4.1: Iterator | ✅ | ~961 | 10 | Iterator trait, MemTable/Table/Merging Iterators |
 | Phase 4.2: Column Families | ✅ | ~1,505 | 24 | CF types, Multi-CF WAL, MANIFEST CF persistence |
+| Phase 4.4: Checkpoint | ✅ | ~308 | 3 | Point-in-time snapshots, Hard-link optimization |
 | Phase 4.5: Statistics | ✅ | ~629 | 11 | Atomic counters, Automatic tracking, Metrics |
 | Phase 5.1: Stress Tests | ✅ | ~473 | 8 | Concurrent operations, Multi-CF stress, Edge cases |
-| Phase 4: Advanced | 🔄 | - | - | Transactions, Backup (planned) |
+| Phase 4: Advanced | 🔄 | - | - | Transactions (planned) |
 | Phase 5: Stability | 🔄 | - | - | Benchmarking, Documentation (ongoing) |
 
-**Total**: ~8,510 LOC | 176 tests passing | All CI green ✅
+**Total**: ~8,818 LOC | 179 tests passing | All CI green ✅
 
 ---
 
@@ -67,6 +68,15 @@ Comprehensive stress tests for stability validation
   - test_sequential_deletes: 1000 deletion operations
   - test_alternating_write_delete: Complex state transitions
 - **Commit**: `db582e0`
+
+### Phase 4.4: Checkpoint ✅ (2025-10-24)
+Point-in-time snapshot mechanism for backups and recovery
+- **Features**: Consistent snapshots, hard-link optimization, independent checkpoint DBs
+- **Implementation**: Flush MemTables, hard-link SSTables, copy MANIFEST/CURRENT
+- **Files**: src/checkpoint/mod.rs (280 LOC), src/db/db.rs (flush integration)
+- **Tests**: 3 tests (basic, with flush, isolation)
+- **Commit**: `c1aa69e`
+- **Use cases**: Backups without stopping writes, read-only replicas, point-in-time recovery
 
 ### Phase 4.5: Statistics & Monitoring ✅ (2025-10-24)
 Database-wide statistics tracking with atomic counters
@@ -129,10 +139,10 @@ DB::open() flow:
 - [ ] TransactionDB with lock management
 - [ ] WriteBatch with index
 
-### 4.4 Backup & Checkpoint (Low Priority, 1 week)
-- [ ] Backup Engine
-- [ ] Checkpoint mechanism
-- [ ] SST file import/export
+### 4.4 Backup & Checkpoint ✅
+- [x] Checkpoint mechanism (commit `c1aa69e`)
+- [ ] Backup Engine (future - lower priority)
+- [ ] SST file import/export (future)
 
 ### 4.5 Monitoring & Statistics ✅ COMPLETE
 - [x] Statistics implementation (commit `7adf7ca`)
@@ -146,7 +156,7 @@ DB::open() flow:
 
 ### 5.1 Testing (High Priority, Ongoing)
 - [x] Stress tests (commit `db582e0` - 8 comprehensive tests)
-- [ ] Unit test coverage >80% (currently 176 tests)
+- [ ] Unit test coverage >80% (currently 179 tests)
 - [ ] Crash tests, fuzzing
 
 ### 5.2 Benchmarking ✅ (commit `408d66e`)
@@ -166,8 +176,8 @@ db_bench tool with fillseq/readrandom/readseq
 
 | Metric | Current | Target | Status |
 |--------|---------|--------|--------|
-| LOC | 8,510 | ~50,000 | 17% ✅ |
-| Tests | 176 | >80% | Excellent ✅ |
+| LOC | 8,818 | ~50,000 | 18% ✅ |
+| Tests | 179 | >80% | Excellent ✅ |
 | Write Throughput | **105K ops/sec** | 100K | **Met!** ✅ |
 | Sequential Read | **773K ops/sec** | 200K | **3.9x!** ✅ |
 | Write P99 Latency | 10μs | <50μs | Excellent ✅ |
@@ -206,14 +216,22 @@ db_bench tool with fillseq/readrandom/readseq
 1. ✅ Phase 4.2 Column Families (commit `c896140`)
 2. ✅ Phase 5.1 Stress Tests (commit `db582e0`)
 3. ✅ Phase 4.5 Statistics (commits `7adf7ca`, `4cf5e60`)
+4. ✅ Phase 4.4 Checkpoint (commit `c1aa69e`)
 
 ### Next Options
-- **Option A**: Phase 4.3 - Transactions (complex, low priority)
-- **Option B**: Phase 4.4 - Backup & Checkpoint (low priority)
-- **Option C**: Phase 5 - Crash tests, fuzzing, documentation
-- **Option D**: Performance optimization & monitoring with statistics
+- **Option A**: Phase 4.3 - Transactions (complex, interesting feature)
+- **Option B**: Phase 5 - Documentation & Architecture guide
+- **Option C**: Performance optimization & monitoring analysis
+- **Option D**: Additional testing (crash tests, fuzzing)
+
+### Status Summary
+- **Core functionality**: Complete (LSM-Tree, Compaction, Multi-CF, Iterator)
+- **Performance features**: Complete (Cache, Bloom Filter, Compression)
+- **Advanced features**: Checkpoint ✅, Statistics ✅, Transactions pending
+- **Testing**: Strong (179 tests, stress tests, all passing)
+- **Progress**: 8,818 LOC (18% of target), Production-ready foundation
 
 ---
 
-**Last Updated**: 2025-10-24 (Phase 4.5 Statistics automatic tracking COMPLETE)
+**Last Updated**: 2025-10-24 (Phase 4.4 Checkpoint COMPLETE)
 **Next Review**: After choosing next phase
