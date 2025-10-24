@@ -441,8 +441,8 @@ Implement persistent storage with LSM-Tree architecture.
 
 ---
 
-### 4.2 Column Families ✅ MOSTLY COMPLETE (2025-10-24)
-**Priority**: Medium | **Estimated**: 1 week | **Actual**: 2 sessions
+### 4.2 Column Families ✅ COMPLETE (2025-10-24)
+**Priority**: Medium | **Estimated**: 1 week | **Actual**: 3 sessions
 
 - [x] **Foundation Types**:
   - [x] ColumnFamilyOptions - per-CF configuration
@@ -461,22 +461,26 @@ Implement persistent storage with LSM-Tree architecture.
   - [x] CF-specific operations (put_cf, get_cf, delete_cf, iter_cf)
   - [x] Per-CF compaction support (compact_level_cf, maybe_compact_cf)
   - [x] Integration tests for multi-CF scenarios
-- [ ] **Remaining Work**:
-  - [ ] WAL updates for CF support (currently shared across all CFs)
-  - [ ] Per-CF WAL truncation on flush
-  - [ ] Recovery with CF information
+- [x] **WAL Multi-CF Support**:
+  - [x] WAL record format updated to include CF ID (4 bytes)
+  - [x] WAL encoding/decoding with CF ID
+  - [x] WAL recovery dispatches records to correct CF
+  - [x] Per-CF sequence number tracking during recovery
+  - [x] Graceful handling of missing CFs during recovery
+  - [x] Integration tests for multi-CF WAL operations
 
 **Commits**:
 - `551d2a6` - Foundation types (ColumnFamilyOptions, Handle, Descriptor)
 - `ab422fd` - ColumnFamilyData internal structure
 - `c5f443f` - ColumnFamilySet and DB integration
+- `c8aa991` - WAL multi-CF support with per-CF recovery
 
 **Files Added**: 6 files (~1011 lines): src/column_family/{mod.rs, column_family_options.rs, column_family_handle.rs, column_family_descriptor.rs, column_family_data.rs, column_family_set.rs}
-**Files Modified**: src/db/db.rs (refactored for CF support), tests/cache_test.rs
-**LOC Added**: ~640 lines (CF DB integration)
-**Tests**: 117 passing (11 CF tests + 1 multi-CF integration)
+**Files Modified**: src/db/db.rs (refactored for CF support + WAL multi-CF), tests/cache_test.rs, tests/wal_recovery_test.rs (+244 lines)
+**LOC Added**: ~950 lines total
+**Tests**: 125 passing (11 CF tests + 1 multi-CF integration + 3 WAL multi-CF tests)
 
-**Status**: Core CF implementation complete, WAL multi-CF support pending
+**Status**: Column Families feature complete! Cross-restart CF recovery requires MANIFEST persistence (see Phase 5.1)
 
 ---
 

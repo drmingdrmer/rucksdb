@@ -494,12 +494,35 @@ impl DB {
         name: &str,
         options: crate::column_family::ColumnFamilyOptions,
     ) -> Result<ColumnFamilyHandle> {
-        self.column_families.create_cf(name.to_string(), options)
+        let handle = self.column_families.create_cf(name.to_string(), options)?;
+
+        // Log CF creation to MANIFEST (use default CF's VersionSet)
+        let default_cf = self.column_families.default_cf();
+        let version_set = default_cf.version_set();
+        let version_set_guard = version_set.read();
+
+        let mut edit = crate::version::VersionEdit::new();
+        edit.create_column_family(handle.id(), handle.name().to_string());
+        version_set_guard.log_and_apply(edit)?;
+
+        Ok(handle)
     }
 
     /// Drop a column family
     pub fn drop_column_family(&self, cf_handle: &ColumnFamilyHandle) -> Result<()> {
-        self.column_families.drop_cf(cf_handle)
+        let cf_id = cf_handle.id();
+        self.column_families.drop_cf(cf_handle)?;
+
+        // Log CF drop to MANIFEST (use default CF's VersionSet)
+        let default_cf = self.column_families.default_cf();
+        let version_set = default_cf.version_set();
+        let version_set_guard = version_set.read();
+
+        let mut edit = crate::version::VersionEdit::new();
+        edit.drop_column_family(cf_id);
+        version_set_guard.log_and_apply(edit)?;
+
+        Ok(())
     }
 
     /// List all column families
