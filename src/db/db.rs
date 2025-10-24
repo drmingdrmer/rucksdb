@@ -339,8 +339,10 @@ impl DB {
             let mut wal_guard = self.wal.write();
             if let Some(wal) = wal_guard.as_mut() {
                 wal.add_record(&record)?;
+                self.statistics.record_wal_write(record.len() as u64);
                 if options.sync {
                     wal.sync()?;
+                    self.statistics.record_wal_sync();
                 }
             }
         }
@@ -348,7 +350,9 @@ impl DB {
         // Then write to MemTable
         let mem = cf.mem();
         let mem_guard = mem.read();
+        let bytes_written = (key.size() + value.size()) as u64;
         mem_guard.add(seq, key, value);
+        self.statistics.record_write(bytes_written);
 
         // Check if we need to flush
         if cf.should_flush() {
@@ -384,6 +388,10 @@ impl DB {
             let (found, value) = mem_guard.get(key);
             if found {
                 // Key exists in MemTable (either with value or deleted)
+                self.statistics.record_memtable_hit();
+                if let Some(ref v) = value {
+                    self.statistics.record_read(v.size() as u64);
+                }
                 return Ok(value);
             }
         }
@@ -395,9 +403,16 @@ impl DB {
             if let Some(imm_table) = imm_guard.as_ref()
                 && let (true, value) = imm_table.get(key)
             {
+                self.statistics.record_immutable_memtable_hit();
+                if let Some(ref v) = value {
+                    self.statistics.record_read(v.size() as u64);
+                }
                 return Ok(value);
             }
         }
+
+        // Not found in MemTables - record miss before checking SSTables
+        self.statistics.record_memtable_miss();
 
         // Then check SSTables through VersionSet
         let version_set = cf.version_set();
@@ -407,8 +422,11 @@ impl DB {
 
         // Check level 0 first (newest files have highest numbers)
         for file in version.get_level_files(0).iter().rev() {
+            self.statistics.record_sstable_read();
             let mut table = self.get_table(file.number)?;
             if let Some(value) = table.get(key)? {
+                self.statistics.record_sstable_hit();
+                self.statistics.record_read(value.size() as u64);
                 return Ok(Some(value));
             }
         }
@@ -417,13 +435,18 @@ impl DB {
         for level in 1..version.files.len() {
             let files = version.get_overlapping_files(level, key, key);
             for file in files {
+                self.statistics.record_sstable_read();
                 let mut table = self.get_table(file.number)?;
                 if let Some(value) = table.get(key)? {
+                    self.statistics.record_sstable_hit();
+                    self.statistics.record_read(value.size() as u64);
                     return Ok(Some(value));
                 }
             }
         }
 
+        // Not found in SSTables either - record miss
+        self.statistics.record_sstable_miss();
         Ok(None)
     }
 
@@ -525,8 +548,10 @@ impl DB {
             let mut wal_guard = self.wal.write();
             if let Some(wal) = wal_guard.as_mut() {
                 wal.add_record(&record)?;
+                self.statistics.record_wal_write(record.len() as u64);
                 if options.sync {
                     wal.sync()?;
+                    self.statistics.record_wal_sync();
                 }
             }
         }
@@ -535,6 +560,7 @@ impl DB {
         let mem = cf.mem();
         let mem_guard = mem.read();
         mem_guard.delete(seq, key);
+        self.statistics.record_delete();
         Ok(())
     }
 
@@ -657,6 +683,9 @@ impl DB {
             let mut wal_guard = self.wal.write();
             *wal_guard = Some(wal::Writer::new(&wal_path)?);
         }
+
+        // Record flush statistics
+        self.statistics.record_memtable_flush(file_size);
 
         Ok(())
     }

@@ -13,7 +13,7 @@ fn test_statistics_basic_tracking() {
     assert_eq!(stats.num_keys_written(), 0);
     assert_eq!(stats.num_keys_read(), 0);
 
-    // Write some keys (manual tracking for now - will be automatic later)
+    // Write some keys - statistics tracked automatically
     db.put(
         &WriteOptions::default(),
         Slice::from("key1"),
@@ -27,13 +27,21 @@ fn test_statistics_basic_tracking() {
     )
     .unwrap();
 
+    // Verify write statistics
+    assert_eq!(stats.num_keys_written(), 2);
+    assert_eq!(stats.bytes_written(), (4 + 6) * 2); // (key1+value1) + (key2+value2)
+
     // Read keys
     db.get(&ReadOptions::default(), &Slice::from("key1"))
         .unwrap();
     db.get(&ReadOptions::default(), &Slice::from("key2"))
         .unwrap();
 
-    // Statistics are available even if not automatically tracked yet
+    // Verify read statistics - should hit MemTable
+    assert_eq!(stats.num_keys_read(), 2);
+    assert_eq!(stats.memtable_hit_rate(), 1.0); // 100% hit rate
+
+    // Statistics report contains expected sections
     let report = stats.report();
     assert!(report.contains("Database Statistics"));
     assert!(report.contains("Operations:"));
@@ -82,6 +90,73 @@ fn test_statistics_reset() {
     assert_eq!(stats.num_keys_read(), 0);
     assert_eq!(stats.bytes_written(), 0);
     assert_eq!(stats.bytes_read(), 0);
+}
+
+#[test]
+fn test_statistics_automatic_tracking() {
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("test_db");
+
+    let db = DB::open(db_path.to_str().unwrap(), DBOptions::default()).unwrap();
+    let stats = db.statistics();
+
+    // Write keys
+    db.put(
+        &WriteOptions::default(),
+        Slice::from("key1"),
+        Slice::from("value1"),
+    )
+    .unwrap();
+    db.put(
+        &WriteOptions::default(),
+        Slice::from("key2"),
+        Slice::from("value2"),
+    )
+    .unwrap();
+
+    // Verify write tracking
+    assert_eq!(stats.num_keys_written(), 2);
+    assert!(stats.bytes_written() > 0);
+    assert!(stats.wal_writes.load(std::sync::atomic::Ordering::Relaxed) > 0);
+
+    // Delete a key
+    db.delete(&WriteOptions::default(), Slice::from("key1"))
+        .unwrap();
+
+    // Verify delete tracking
+    assert_eq!(stats.num_keys_deleted(), 1);
+
+    // Read existing key (MemTable hit)
+    let result = db
+        .get(&ReadOptions::default(), &Slice::from("key2"))
+        .unwrap();
+    assert!(result.is_some());
+
+    // Read deleted key (MemTable hit but value is None)
+    let result = db
+        .get(&ReadOptions::default(), &Slice::from("key1"))
+        .unwrap();
+    assert!(result.is_none());
+
+    // Read non-existent key (MemTable miss)
+    let result = db
+        .get(&ReadOptions::default(), &Slice::from("key3"))
+        .unwrap();
+    assert!(result.is_none());
+
+    // Verify MemTable statistics
+    assert!(
+        stats
+            .memtable_hits
+            .load(std::sync::atomic::Ordering::Relaxed)
+            > 0
+    );
+    assert!(
+        stats
+            .memtable_misses
+            .load(std::sync::atomic::Ordering::Relaxed)
+            > 0
+    );
 }
 
 #[test]
