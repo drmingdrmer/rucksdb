@@ -844,6 +844,13 @@ impl DB {
         let smallest = merged.first().unwrap().0.clone();
         let largest = merged.last().unwrap().0.clone();
 
+        // Record compaction statistics
+        let bytes_read: u64 = level_files.iter().map(|f| f.file_size).sum::<u64>()
+            + next_level_files.iter().map(|f| f.file_size).sum::<u64>();
+        let num_input_files = (level_files.len() + next_level_files.len()) as u64;
+        self.statistics
+            .record_compaction(bytes_read, file_size, num_input_files);
+
         // Create VersionEdit
         let mut edit = VersionEdit::new();
 

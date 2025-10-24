@@ -1,3 +1,4 @@
+pub mod compaction_picker;
 #[allow(clippy::module_inception)]
 pub mod version;
 pub mod version_edit;

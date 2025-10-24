@@ -126,30 +126,21 @@ impl Version {
         !(a_largest.data() < b_smallest.data() || b_largest.data() < a_smallest.data())
     }
 
-    /// Pick level for compaction based on level sizes
+    /// Pick level for compaction using priority-based selection
+    /// Replaced by CompactionPicker for more sophisticated selection
     pub fn pick_compaction_level(&self) -> Option<usize> {
-        // Simple strategy: pick the first level that exceeds its size threshold
-        // Level 0: 4 files
-        // Level 1: 10 MB
-        // Level 2+: 10x previous level
+        use crate::version::compaction_picker::CompactionPicker;
 
-        const LEVEL0_COMPACTION_TRIGGER: usize = 4;
-        const LEVEL1_SIZE_LIMIT: u64 = 10 * 1024 * 1024; // 10MB
+        let picker = CompactionPicker::new();
+        picker.pick_compaction(self)
+    }
 
-        if self.files[0].len() >= LEVEL0_COMPACTION_TRIGGER {
-            return Some(0);
-        }
+    /// Get compaction scores for all levels (for monitoring)
+    pub fn get_compaction_scores(&self) -> Vec<crate::version::compaction_picker::CompactionScore> {
+        use crate::version::compaction_picker::CompactionPicker;
 
-        let mut size_limit = LEVEL1_SIZE_LIMIT;
-        for level in 1..NUM_LEVELS {
-            let level_size: u64 = self.files[level].iter().map(|f| f.file_size).sum();
-            if level_size > size_limit {
-                return Some(level);
-            }
-            size_limit *= 10;
-        }
-
-        None
+        let picker = CompactionPicker::new();
+        picker.get_all_scores(self)
     }
 }
 
@@ -215,8 +206,8 @@ mod tests {
     fn test_pick_compaction_level() {
         let mut version = Version::new();
 
-        // Add 4 files to level 0 to trigger compaction
-        for i in 0..4 {
+        // Add 5 files to level 0 (score = 5/4 = 1.25 > 1.0)
+        for i in 0..5 {
             version.add_file(
                 0,
                 FileMetaData::new(i, 1024, Slice::from("a"), Slice::from("z")),
