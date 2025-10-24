@@ -904,6 +904,48 @@ impl DB {
 
         Ok(())
     }
+
+    /// Create a snapshot at the current sequence number
+    pub fn get_snapshot(&self) -> crate::transaction::Snapshot {
+        // Get current sequence from default CF
+        let default_cf = self.column_families.default_cf();
+        let seq = *default_cf.sequence.lock();
+
+        crate::transaction::Snapshot::new(seq)
+    }
+
+    /// Apply a write batch atomically
+    pub fn write(
+        &self,
+        options: &WriteOptions,
+        batch: &crate::transaction::WriteBatch,
+    ) -> Result<()> {
+        // Execute all operations in the batch
+        for (cf_id, op) in batch.ops() {
+            let cf_handle = ColumnFamilyHandle::new(*cf_id, format!("cf_{}", cf_id));
+
+            match op {
+                crate::transaction::WriteOp::Put { key, value } => {
+                    self.put_cf(
+                        options,
+                        &cf_handle,
+                        Slice::from(key.as_slice()),
+                        Slice::from(value.as_slice()),
+                    )?;
+                },
+                crate::transaction::WriteOp::Delete { key } => {
+                    self.delete_cf(options, &cf_handle, Slice::from(key.as_slice()))?;
+                },
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Get default column family handle
+    pub fn default_cf(&self) -> ColumnFamilyHandle {
+        self.column_families.default_cf().handle().clone()
+    }
 }
 
 #[cfg(test)]

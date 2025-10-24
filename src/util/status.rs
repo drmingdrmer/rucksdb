@@ -67,6 +67,13 @@ impl Status {
         }
     }
 
+    pub fn busy(msg: impl Into<String>) -> Self {
+        Status {
+            code: Code::Busy,
+            message: Some(msg.into()),
+        }
+    }
+
     pub fn is_ok(&self) -> bool {
         self.code == Code::Ok
     }
