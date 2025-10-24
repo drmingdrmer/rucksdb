@@ -10,7 +10,6 @@ use crate::{
     cache::LRUCache,
     column_family::{ColumnFamilyHandle, ColumnFamilySet},
     filter::{BloomFilterPolicy, FilterPolicy},
-    memtable::MemTable,
     table::{CompressionType, TableBuilder, TableReader},
     util::{Result, Slice, Status},
     version::{FileMetaData, VersionEdit},
@@ -99,23 +98,17 @@ impl DB {
 
         let wal_path = db_path.join("wal.log");
 
-        // Get default CF for WAL recovery
-        let default_cf = cf_set.default_cf();
-        let mem = default_cf.mem();
-        let sequence = default_cf.sequence.clone();
-
-        // Initialize VersionSet (managed per-CF now)
+        // Initialize VersionSet for default CF
         {
+            let default_cf = cf_set.default_cf();
             let version_set = default_cf.version_set();
             let mut vs = version_set.write();
             vs.open_or_create()?;
+        }
 
-            // Recover from WAL if exists
-            if wal_path.exists() {
-                Self::recover_from_wal(&wal_path, &mem, &sequence)?;
-                // Update VersionSet with recovered sequence
-                vs.set_last_sequence(*sequence.lock());
-            }
+        // Recover from WAL if exists (handles all CFs)
+        if wal_path.exists() {
+            Self::recover_from_wal(&wal_path, &cf_set)?;
         }
 
         // Open WAL for writing
@@ -139,42 +132,72 @@ impl DB {
         TableReader::open(&sst_path, file_number, Some(self.block_cache.clone()))
     }
 
-    /// Recover data from WAL
+    /// Recover data from WAL (multi-CF aware)
     fn recover_from_wal(
         wal_path: &Path,
-        mem: &Arc<parking_lot::RwLock<MemTable>>,
-        sequence: &Arc<parking_lot::Mutex<u64>>,
+        cf_set: &Arc<crate::column_family::ColumnFamilySet>,
     ) -> Result<()> {
         let mut reader = wal::Reader::new(wal_path)?;
-        let mut max_seq = 0u64;
+        let mut cf_max_seqs: std::collections::HashMap<u32, u64> = std::collections::HashMap::new();
 
         while let Some(record) = reader.read_record()? {
             if record.is_empty() {
                 continue;
             }
 
-            let (seq, key, value) = Self::decode_wal_record(&record)?;
-            max_seq = max_seq.max(seq);
+            let (cf_id, seq, key, value) = Self::decode_wal_record(&record)?;
 
-            let mem_guard = mem.write();
-            if let Some(val) = value {
-                mem_guard.add(seq, key, val);
+            // Track max sequence per CF
+            cf_max_seqs
+                .entry(cf_id)
+                .and_modify(|max_seq| *max_seq = (*max_seq).max(seq))
+                .or_insert(seq);
+
+            // Get CF by ID - create handle and lookup
+            let cf_handle =
+                crate::column_family::ColumnFamilyHandle::new(cf_id, format!("cf_{}", cf_id));
+            if let Some(cf) = cf_set.get_cf(&cf_handle) {
+                let mem = cf.mem();
+                let mem_guard = mem.write();
+                if let Some(val) = value {
+                    mem_guard.add(seq, key, val);
+                } else {
+                    mem_guard.delete(seq, key);
+                }
             } else {
-                mem_guard.delete(seq, key);
+                // CF doesn't exist anymore - skip this record
+                // This can happen if a CF was dropped after WAL write but before recovery
+                continue;
             }
         }
 
-        *sequence.lock() = max_seq + 1;
+        // Update sequence numbers for all CFs that had WAL entries
+        for (cf_id, max_seq) in cf_max_seqs {
+            let cf_handle =
+                crate::column_family::ColumnFamilyHandle::new(cf_id, format!("cf_{}", cf_id));
+            if let Some(cf) = cf_set.get_cf(&cf_handle) {
+                *cf.sequence.lock() = max_seq + 1;
+
+                // Update VersionSet
+                let version_set = cf.version_set();
+                let vs = version_set.read();
+                vs.set_last_sequence(max_seq + 1);
+            }
+        }
+
         Ok(())
     }
 
-    /// Encode WAL record: op_type(1) + seq(8) + key_len(2) + key +
+    /// Encode WAL record: op_type(1) + cf_id(4) + seq(8) + key_len(2) + key +
     /// [value_len(2) + value]
-    fn encode_wal_record(seq: u64, key: &Slice, value: Option<&Slice>) -> Vec<u8> {
+    fn encode_wal_record(cf_id: u32, seq: u64, key: &Slice, value: Option<&Slice>) -> Vec<u8> {
         let mut buf = Vec::new();
 
         // Operation type: 1=Put, 2=Delete
         buf.push(if value.is_some() { 1 } else { 2 });
+
+        // Column Family ID
+        buf.extend_from_slice(&cf_id.to_le_bytes());
 
         // Sequence number
         buf.extend_from_slice(&seq.to_le_bytes());
@@ -195,24 +218,26 @@ impl DB {
     }
 
     /// Decode WAL record
-    fn decode_wal_record(data: &[u8]) -> Result<(u64, Slice, Option<Slice>)> {
-        if data.len() < 11 {
+    fn decode_wal_record(data: &[u8]) -> Result<(u32, u64, Slice, Option<Slice>)> {
+        if data.len() < 15 {
+            // op_type(1) + cf_id(4) + seq(8) + key_len(2) = 15 minimum
             return Err(Status::corruption("WAL record too short"));
         }
 
         let op_type = data[0];
-        let seq = u64::from_le_bytes(data[1..9].try_into().unwrap());
+        let cf_id = u32::from_le_bytes(data[1..5].try_into().unwrap());
+        let seq = u64::from_le_bytes(data[5..13].try_into().unwrap());
 
-        let key_len = u16::from_le_bytes([data[9], data[10]]) as usize;
-        if data.len() < 11 + key_len {
+        let key_len = u16::from_le_bytes([data[13], data[14]]) as usize;
+        if data.len() < 15 + key_len {
             return Err(Status::corruption("Invalid key length"));
         }
 
-        let key = Slice::from(&data[11..11 + key_len]);
+        let key = Slice::from(&data[15..15 + key_len]);
 
         let value = if op_type == 1 {
             // Put operation
-            let val_start = 11 + key_len;
+            let val_start = 15 + key_len;
             if data.len() < val_start + 2 {
                 return Err(Status::corruption("Invalid value length"));
             }
@@ -227,7 +252,7 @@ impl DB {
             None
         };
 
-        Ok((seq, key, value))
+        Ok((cf_id, seq, key, value))
     }
 
     pub fn put(&self, options: &WriteOptions, key: Slice, value: Slice) -> Result<()> {
@@ -250,7 +275,7 @@ impl DB {
         let seq = cf.next_sequence();
 
         // Write to WAL first
-        let record = Self::encode_wal_record(seq, &key, Some(&value));
+        let record = Self::encode_wal_record(cf_handle.id(), seq, &key, Some(&value));
         {
             let mut wal_guard = self.wal.write();
             if let Some(wal) = wal_guard.as_mut() {
@@ -436,7 +461,7 @@ impl DB {
         let seq = cf.next_sequence();
 
         // Write to WAL first
-        let record = Self::encode_wal_record(seq, &key, None);
+        let record = Self::encode_wal_record(cf_handle.id(), seq, &key, None);
         {
             let mut wal_guard = self.wal.write();
             if let Some(wal) = wal_guard.as_mut() {
