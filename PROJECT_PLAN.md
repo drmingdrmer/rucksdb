@@ -5,7 +5,7 @@
 Complete Rust reimplementation of RocksDB with all core features and optimizations.
 
 **Start Date**: 2025-10-23
-**Current Phase**: Phase 10 - SST File Ingestion (DB Integration) ✅
+**Current Phase**: Phase 11 - Merge Operator ✅
 
 ---
 
@@ -28,8 +28,9 @@ Complete Rust reimplementation of RocksDB with all core features and optimizatio
 | Phase 8: Backup & Restore Engine | ✅ | ~372 | 3 | BackupEngine, create/restore/list/delete, Hard-link optimization |
 | Phase 9: SST File Import/Export | ✅ | ~206 | 4 | validate_external_file, copy_external_file, IngestExternalFileOptions |
 | Phase 10: SST Ingestion (DB Integration) | ✅ | ~188 | 6 | ingest_external_file, ingest_external_file_cf, LSM integration |
+| Phase 11: Merge Operator | ✅ | ~342 | 9 | MergeOperator trait, CounterMerge, StringAppendMerge, WriteBatch integration |
 
-**Total**: ~15,985 LOC | 253 tests passing | All CI green ✅
+**Total**: ~16,327 LOC | 262 tests passing | All CI green ✅
 
 ---
 
@@ -37,8 +38,8 @@ Complete Rust reimplementation of RocksDB with all core features and optimizatio
 
 | Metric | Current | Target | Status |
 |--------|---------|--------|--------|
-| LOC | 15,985 | ~50,000 | 32% ✅ |
-| Tests | 253 | >80% coverage | Excellent ✅ |
+| LOC | 16,327 | ~50,000 | 33% ✅ |
+| Tests | 262 | >80% coverage | Excellent ✅ |
 | Write Throughput | **104K ops/sec** | 100K | ✅ |
 | Sequential Read | **808K ops/sec** | 200K | **4.0x** ✅ |
 | Random Read | **4.3K ops/sec** | 3K | **1.4x** ✅ |
@@ -50,6 +51,15 @@ Complete Rust reimplementation of RocksDB with all core features and optimizatio
 ---
 
 ## Recently Completed
+
+**Phase 11: Merge Operator** (2025-10-25)
+- `MergeOperator` trait with `full_merge()` and `partial_merge()` methods
+- `CounterMerge` - built-in integer counter with addition/subtraction
+- `StringAppendMerge` - built-in string concatenation with configurable delimiter
+- `WriteOp::Merge` variant for WriteBatch integration
+- `WriteBatch::merge()` API for batching merge operations
+- DBOptions integration with optional merge operator configuration
+- 9 comprehensive tests (counter/string operators, partial merge, negative values)
 
 **Phase 10: SST File Ingestion - DB Integration** (2025-10-25)
 - `ingest_external_file()` - DB API for ingesting external SST files
@@ -101,7 +111,7 @@ Complete Rust reimplementation of RocksDB with all core features and optimizatio
 - Bloom filters, Compression (Snappy/LZ4)
 
 **Quality**: Comprehensive ✅
-- 251 tests (unit, integration, stress, property-based, crash recovery)
+- 262 tests (unit, integration, stress, property-based, crash recovery)
 - 2,287 LOC documentation
 - All CI passing (macOS, Ubuntu, Windows × stable/nightly)
 
@@ -123,8 +133,8 @@ Complete Rust reimplementation of RocksDB with all core features and optimizatio
 
 **Option D: Advanced Features**
 - TTL support, Rate limiting, write throttling
-- Merge operator support
+- Additional merge operator enhancements (LSM integration)
 
 ---
 
-**Last Updated**: 2025-10-25 (Completed Phase 10: SST File Ingestion - DB Integration)
+**Last Updated**: 2025-10-25 (Completed Phase 11: Merge Operator)

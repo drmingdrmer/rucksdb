@@ -74,6 +74,7 @@ impl OptimisticTransaction {
             return match op {
                 WriteOp::Put { value, .. } => Ok(Some(Slice::from(value.as_slice()))),
                 WriteOp::Delete { .. } => Ok(None),
+                WriteOp::Merge { value, .. } => Ok(Some(Slice::from(value.as_slice()))),
             };
         }
 
@@ -157,6 +158,15 @@ impl OptimisticTransaction {
                 WriteOp::Delete { key } => {
                     self.db
                         .delete_cf(options, &cf_handle, Slice::from(key.as_slice()))?;
+                },
+                WriteOp::Merge { key, value } => {
+                    // Treat as put for now
+                    self.db.put_cf(
+                        options,
+                        &cf_handle,
+                        Slice::from(key.as_slice()),
+                        Slice::from(value.as_slice()),
+                    )?;
                 },
             }
         }

@@ -10,6 +10,7 @@ use crate::{
     cache::{LRUCache, TableCache},
     column_family::{ColumnFamilyHandle, ColumnFamilySet},
     filter::{BloomFilterPolicy, FilterPolicy},
+    merge::MergeOperator,
     table::{CompressionType, TableBuilder, TableReader},
     util::{Result, Slice, Status},
     version::{FileMetaData, VersionEdit},
@@ -47,6 +48,7 @@ pub struct DBOptions {
     pub filter_bits_per_key: Option<usize>, // Bloom filter bits per key (None = disabled)
     pub enable_subcompaction: bool,         // Enable parallel subcompaction
     pub subcompaction_min_size: u64,        // Minimum size to trigger subcompaction (bytes)
+    pub merge_operator: Option<Arc<dyn MergeOperator>>, // Merge operator for this database
 }
 
 impl Default for DBOptions {
@@ -62,6 +64,7 @@ impl Default for DBOptions {
             filter_bits_per_key: Some(10), // ~1% false positive rate
             enable_subcompaction: true,
             subcompaction_min_size: 10 * 1024 * 1024, // 10 MB
+            merge_operator: None,                     // No merge operator by default
         }
     }
 }
@@ -973,6 +976,17 @@ impl DB {
                 },
                 crate::transaction::WriteOp::Delete { key } => {
                     self.delete_cf(options, &cf_handle, Slice::from(key.as_slice()))?;
+                },
+                crate::transaction::WriteOp::Merge { key, value } => {
+                    // For now, treat merge operands as puts
+                    // Full implementation would store these specially and apply during
+                    // read/compaction
+                    self.put_cf(
+                        options,
+                        &cf_handle,
+                        Slice::from(key.as_slice()),
+                        Slice::from(value.as_slice()),
+                    )?;
                 },
             }
         }

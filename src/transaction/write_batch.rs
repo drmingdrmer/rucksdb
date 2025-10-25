@@ -7,6 +7,7 @@ use crate::util::{Result, Slice};
 pub enum WriteOp {
     Put { key: Vec<u8>, value: Vec<u8> },
     Delete { key: Vec<u8> },
+    Merge { key: Vec<u8>, value: Vec<u8> }, // Merge operand
 }
 
 /// WriteBatch accumulates multiple write operations for atomic execution
@@ -67,6 +68,24 @@ impl WriteBatch {
 
         let op = WriteOp::Delete {
             key: key_vec.clone(),
+        };
+
+        self.add_to_index(cf_id, key_vec, self.ops.len());
+        self.ops.push((cf_id, op));
+
+        Ok(())
+    }
+
+    /// Add a Merge operation to the batch
+    pub fn merge(&mut self, cf_id: u32, key: Slice, value: Slice) -> Result<()> {
+        let key_vec = key.data().to_vec();
+        let value_vec = value.data().to_vec();
+
+        self.data_size += key_vec.len() + value_vec.len();
+
+        let op = WriteOp::Merge {
+            key: key_vec.clone(),
+            value: value_vec,
         };
 
         self.add_to_index(cf_id, key_vec, self.ops.len());

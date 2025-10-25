@@ -13,6 +13,7 @@ pub mod filter;
 pub mod import_export;
 pub mod iterator;
 pub mod memtable;
+pub mod merge;
 pub mod statistics;
 pub mod table;
 pub mod transaction;
@@ -28,6 +29,7 @@ pub use column_family::{
 pub use db::{DB, DBOptions, ReadOptions, WriteOptions};
 pub use filter::{BloomFilterPolicy, FilterPolicy};
 pub use import_export::IngestExternalFileOptions;
+pub use merge::{CounterMerge, MergeOperator, StringAppendMerge};
 pub use statistics::Statistics;
 pub use table::format::CompressionType;
 pub use transaction::{OptimisticTransaction, Snapshot, TransactionDB, WriteBatch, WriteOp};
