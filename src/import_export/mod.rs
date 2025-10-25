@@ -1,6 +1,10 @@
 use std::{fs, path::Path};
 
-use crate::{Result, Slice};
+use crate::{
+    DB, Result, Slice,
+    column_family::ColumnFamilyHandle,
+    version::{FileMetaData, VersionEdit},
+};
 
 /// Options for ingesting external SST files
 #[derive(Debug, Clone)]
@@ -97,6 +101,83 @@ pub fn copy_external_file<P: AsRef<Path>, Q: AsRef<Path>>(
     }
 
     Ok(())
+}
+
+impl DB {
+    /// Ingests an external SST file into the default column family
+    ///
+    /// This function validates the external SST file, copies/moves it to the
+    /// database directory, and adds it to level 0 of the LSM tree.
+    ///
+    /// # Arguments
+    /// * `file_path` - Path to the external SST file
+    /// * `options` - Options controlling the ingestion behavior
+    ///
+    /// # Returns
+    /// * `Ok(())` if ingestion succeeds
+    /// * `Err(Status)` if validation fails or file cannot be added
+    pub fn ingest_external_file<P: AsRef<Path>>(
+        &self,
+        file_path: P,
+        options: &IngestExternalFileOptions,
+    ) -> Result<()> {
+        let default_cf = self.column_families().default_cf();
+        self.ingest_external_file_cf(default_cf.handle(), file_path, options)
+    }
+
+    /// Ingests an external SST file into a specific column family
+    ///
+    /// # Arguments
+    /// * `cf_handle` - Handle to the target column family
+    /// * `file_path` - Path to the external SST file
+    /// * `options` - Options controlling the ingestion behavior
+    pub fn ingest_external_file_cf<P: AsRef<Path>>(
+        &self,
+        cf_handle: &ColumnFamilyHandle,
+        file_path: P,
+        options: &IngestExternalFileOptions,
+    ) -> Result<()> {
+        let file_path = file_path.as_ref();
+
+        // 1. Validate the external SST file
+        let file_info = validate_external_file(file_path, options)?;
+
+        // 2. Get column family data
+        let cf_data = self
+            .column_families()
+            .get_cf(cf_handle)
+            .ok_or_else(|| crate::util::Status::invalid_argument("Column family not found"))?;
+
+        // 3. Allocate a new file number for this SST
+        let file_number = {
+            let version_set = cf_data.version_set();
+            let vs = version_set.write();
+            vs.new_file_number()
+        };
+
+        // 4. Copy/move the file to the DB directory with new file number
+        let target_path = self.db_path().join(format!("{:06}.sst", file_number));
+        copy_external_file(file_path, &target_path, options.move_files)?;
+
+        // 5. Create file metadata
+        let file_meta = FileMetaData {
+            number: file_number,
+            file_size: file_info.file_size,
+            smallest: file_info.smallest_key,
+            largest: file_info.largest_key,
+        };
+
+        // 6. Add file to LSM tree at level 0 via VersionEdit
+        let mut edit = VersionEdit::default();
+        edit.new_files.push((0, file_meta)); // Always add to level 0
+
+        // 7. Apply the edit to the version set
+        let version_set = cf_data.version_set();
+        let vs = version_set.read();
+        vs.log_and_apply(edit)?;
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -199,5 +280,115 @@ mod tests {
         let options = IngestExternalFileOptions::default();
         let result = validate_external_file("/nonexistent/file.sst", &options);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_ingest_external_file() {
+        use crate::{DB, DBOptions, ReadOptions, WriteOptions};
+
+        let db_dir = TempDir::new().unwrap();
+        let external_dir = TempDir::new().unwrap();
+
+        // 1. Create an external SST file
+        let external_sst = external_dir.path().join("external.sst");
+        {
+            let mut builder = TableBuilder::new(&external_sst).unwrap();
+            for i in 100..120 {
+                let key = format!("ext_key{:03}", i);
+                let value = format!("ext_value{}", i);
+                builder.add(&Slice::from(key), &Slice::from(value)).unwrap();
+            }
+            builder.finish(CompressionType::None).unwrap();
+        }
+
+        // 2. Create a database and add some initial data
+        let db = DB::open(db_dir.path().to_str().unwrap(), DBOptions::default()).unwrap();
+        for i in 0..10 {
+            db.put(
+                &WriteOptions::default(),
+                Slice::from(format!("key{:02}", i)),
+                Slice::from(format!("value{}", i)),
+            )
+            .unwrap();
+        }
+
+        // 3. Ingest the external SST file
+        let options = IngestExternalFileOptions {
+            move_files: false,
+            verify_checksums_before_ingest: true,
+        };
+        db.ingest_external_file(&external_sst, &options).unwrap();
+
+        // 4. Verify that data from both sources is readable
+        // Check original data
+        for i in 0..10 {
+            let key = format!("key{:02}", i);
+            let value = db
+                .get(&ReadOptions::default(), &Slice::from(key.as_str()))
+                .unwrap();
+            assert_eq!(
+                value.as_ref().map(|v| v.to_string()),
+                Some(format!("value{}", i))
+            );
+        }
+
+        // Check ingested data
+        for i in 100..120 {
+            let key = format!("ext_key{:03}", i);
+            let value = db
+                .get(&ReadOptions::default(), &Slice::from(key.as_str()))
+                .unwrap();
+            assert_eq!(
+                value.as_ref().map(|v| v.to_string()),
+                Some(format!("ext_value{}", i))
+            );
+        }
+
+        // 5. Verify external file still exists (copy mode)
+        assert!(external_sst.exists());
+    }
+
+    #[test]
+    fn test_ingest_external_file_with_move() {
+        use crate::{DB, DBOptions, ReadOptions};
+
+        let db_dir = TempDir::new().unwrap();
+        let external_dir = TempDir::new().unwrap();
+
+        // Create an external SST file
+        let external_sst = external_dir.path().join("to_move.sst");
+        {
+            let mut builder = TableBuilder::new(&external_sst).unwrap();
+            for i in 200..210 {
+                let key = format!("move_key{:03}", i);
+                let value = format!("move_value{}", i);
+                builder.add(&Slice::from(key), &Slice::from(value)).unwrap();
+            }
+            builder.finish(CompressionType::None).unwrap();
+        }
+
+        let db = DB::open(db_dir.path().to_str().unwrap(), DBOptions::default()).unwrap();
+
+        // Ingest with move
+        let options = IngestExternalFileOptions {
+            move_files: true,
+            verify_checksums_before_ingest: true,
+        };
+        db.ingest_external_file(&external_sst, &options).unwrap();
+
+        // Verify data is readable
+        for i in 200..210 {
+            let key = format!("move_key{:03}", i);
+            let value = db
+                .get(&ReadOptions::default(), &Slice::from(key.as_str()))
+                .unwrap();
+            assert_eq!(
+                value.as_ref().map(|v| v.to_string()),
+                Some(format!("move_value{}", i))
+            );
+        }
+
+        // Verify external file no longer exists (move mode)
+        assert!(!external_sst.exists());
     }
 }

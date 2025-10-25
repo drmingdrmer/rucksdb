@@ -5,7 +5,7 @@
 Complete Rust reimplementation of RocksDB with all core features and optimizations.
 
 **Start Date**: 2025-10-23
-**Current Phase**: Phase 9 - SST File Import/Export ✅
+**Current Phase**: Phase 10 - SST File Ingestion (DB Integration) ✅
 
 ---
 
@@ -27,8 +27,9 @@ Complete Rust reimplementation of RocksDB with all core features and optimizatio
 | Phase 7: Manual Compaction & Properties | ✅ | ~200 | 5 | compact_range API, get_property API, DB introspection |
 | Phase 8: Backup & Restore Engine | ✅ | ~372 | 3 | BackupEngine, create/restore/list/delete, Hard-link optimization |
 | Phase 9: SST File Import/Export | ✅ | ~206 | 4 | validate_external_file, copy_external_file, IngestExternalFileOptions |
+| Phase 10: SST Ingestion (DB Integration) | ✅ | ~188 | 6 | ingest_external_file, ingest_external_file_cf, LSM integration |
 
-**Total**: ~15,797 LOC | 251 tests passing | All CI green ✅
+**Total**: ~15,985 LOC | 253 tests passing | All CI green ✅
 
 ---
 
@@ -36,8 +37,8 @@ Complete Rust reimplementation of RocksDB with all core features and optimizatio
 
 | Metric | Current | Target | Status |
 |--------|---------|--------|--------|
-| LOC | 15,797 | ~50,000 | 32% ✅ |
-| Tests | 251 | >80% coverage | Excellent ✅ |
+| LOC | 15,985 | ~50,000 | 32% ✅ |
+| Tests | 253 | >80% coverage | Excellent ✅ |
 | Write Throughput | **104K ops/sec** | 100K | ✅ |
 | Sequential Read | **808K ops/sec** | 200K | **4.0x** ✅ |
 | Random Read | **4.3K ops/sec** | 3K | **1.4x** ✅ |
@@ -50,12 +51,20 @@ Complete Rust reimplementation of RocksDB with all core features and optimizatio
 
 ## Recently Completed
 
-**Phase 9: SST File Import/Export** (2025-10-25)
+**Phase 10: SST File Ingestion - DB Integration** (2025-10-25)
+- `ingest_external_file()` - DB API for ingesting external SST files
+- `ingest_external_file_cf()` - column family-specific ingestion
+- LSM tree integration via VersionEdit and log_and_apply
+- File number allocation through VersionSet
+- 2 comprehensive integration tests (copy mode, move mode with full data verification)
+- Total 6 tests in import_export module, all passing
+
+**Phase 9: SST File Import/Export - Foundation** (2025-10-25)
 - `validate_external_file()` - validates SST file structure and extracts metadata
 - `copy_external_file()` - copies/moves SST files with parent directory creation
 - `IngestExternalFileOptions` - configuration for file ingestion
 - `ExternalFileInfo` - file metadata (size, entries, key range)
-- 4 comprehensive tests (validate, copy, move, error handling)
+- 4 foundation tests (validate, copy, move, error handling)
 
 **Phase 8: Backup & Restore Engine** (2025-10-25)
 - `BackupEngine` - comprehensive backup management system
@@ -114,8 +123,8 @@ Complete Rust reimplementation of RocksDB with all core features and optimizatio
 
 **Option D: Advanced Features**
 - TTL support, Rate limiting, write throttling
-- Additional SST import/export features (ingest_external_file DB integration)
+- Merge operator support
 
 ---
 
-**Last Updated**: 2025-10-25 (Completed Phase 9: SST File Import/Export)
+**Last Updated**: 2025-10-25 (Completed Phase 10: SST File Ingestion - DB Integration)
