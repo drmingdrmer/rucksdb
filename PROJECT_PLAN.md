@@ -5,7 +5,7 @@
 Complete Rust reimplementation of RocksDB with all core features and optimizations.
 
 **Start Date**: 2025-10-23
-**Current Phase**: Phase 11 - Merge Operator ✅
+**Current Phase**: Phase 12 - Property-Based Testing ✅
 
 ---
 
@@ -29,8 +29,9 @@ Complete Rust reimplementation of RocksDB with all core features and optimizatio
 | Phase 9: SST File Import/Export | ✅ | ~206 | 4 | validate_external_file, copy_external_file, IngestExternalFileOptions |
 | Phase 10: SST Ingestion (DB Integration) | ✅ | ~188 | 6 | ingest_external_file, ingest_external_file_cf, LSM integration |
 | Phase 11: Merge Operator | ✅ | ~342 | 9 | MergeOperator trait, CounterMerge, StringAppendMerge, WriteBatch integration |
+| Phase 12: Property-Based Testing | ✅ | ~412 | 10 | Proptest integration, 10 property tests (KV ops, persistence, compaction) |
 
-**Total**: ~16,327 LOC | 262 tests passing | All CI green ✅
+**Total**: ~16,739 LOC | 272 tests passing | All CI green ✅
 
 ---
 
@@ -38,8 +39,8 @@ Complete Rust reimplementation of RocksDB with all core features and optimizatio
 
 | Metric | Current | Target | Status |
 |--------|---------|--------|--------|
-| LOC | 16,327 | ~50,000 | 33% ✅ |
-| Tests | 262 | >80% coverage | Excellent ✅ |
+| LOC | 16,739 | ~50,000 | 33% ✅ |
+| Tests | 272 | >80% coverage | Excellent ✅ |
 | Write Throughput | **104K ops/sec** | 100K | ✅ |
 | Sequential Read | **808K ops/sec** | 200K | **4.0x** ✅ |
 | Random Read | **4.3K ops/sec** | 3K | **1.4x** ✅ |
@@ -51,6 +52,23 @@ Complete Rust reimplementation of RocksDB with all core features and optimizatio
 ---
 
 ## Recently Completed
+
+**Phase 12: Property-Based Testing** (2025-10-26)
+- Implemented comprehensive property-based testing with proptest
+- 10 property tests covering core database invariants:
+  - Write-Read Consistency (duplicate key handling with HashMap)
+  - Delete Semantics (deleted keys return None)
+  - Overwrite Semantics (last write wins)
+  - Persistence (data survives restart, with duplicate key handling)
+  - Operation Determinism (model-based testing with HashMap reference)
+  - Empty Value Handling
+  - Large Value Handling (10KB-100KB)
+  - Key Ordering Invariant (iterator returns sorted keys)
+  - Read-Your-Writes Consistency
+  - Compaction Preserves Data (with duplicate key handling)
+- All 10 property tests passing with 100+ test cases each
+- Fixed iterator API usage and borrowing lifetime issues
+- Tests verify correctness under random inputs (1-100 operations per test)
 
 **Phase 11: Merge Operator** (2025-10-25)
 - `MergeOperator` trait with `full_merge()` and `partial_merge()` methods
@@ -111,7 +129,8 @@ Complete Rust reimplementation of RocksDB with all core features and optimizatio
 - Bloom filters, Compression (Snappy/LZ4)
 
 **Quality**: Comprehensive ✅
-- 262 tests (unit, integration, stress, property-based, crash recovery)
+- 272 tests (unit, integration, stress, property-based, crash recovery)
+- 10 property-based tests with proptest (1000+ test cases)
 - 2,287 LOC documentation
 - All CI passing (macOS, Ubuntu, Windows × stable/nightly)
 
@@ -123,9 +142,9 @@ Complete Rust reimplementation of RocksDB with all core features and optimizatio
 - Alternative strategy for write-heavy workloads
 - Fewer levels, larger files, different space/write amplification trade-off
 
-**Option B: Advanced Testing**
-- Fuzzing, long-running stress tests, Jepsen-style testing
-- Property-based testing expansion
+**Option B: Advanced Testing** (Partially completed ✅)
+- ✅ Property-based testing with proptest (10 tests)
+- TODO: Fuzzing, long-running stress tests, Jepsen-style testing
 
 **Option C: Performance & I/O**
 - Async I/O, parallel compaction execution
@@ -137,4 +156,4 @@ Complete Rust reimplementation of RocksDB with all core features and optimizatio
 
 ---
 
-**Last Updated**: 2025-10-25 (Completed Phase 11: Merge Operator)
+**Last Updated**: 2025-10-26 (Completed Phase 12: Property-Based Testing)
