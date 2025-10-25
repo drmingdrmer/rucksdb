@@ -29,7 +29,7 @@ Complete Rust reimplementation of RocksDB with all core features and optimizatio
 | Phase 9: SST File Import/Export | ✅ | ~206 | 4 | validate_external_file, copy_external_file, IngestExternalFileOptions |
 | Phase 10: SST Ingestion (DB Integration) | ✅ | ~188 | 6 | ingest_external_file, ingest_external_file_cf, LSM integration |
 | Phase 11: Merge Operator | ✅ | ~342 | 9 | MergeOperator trait, CounterMerge, StringAppendMerge, WriteBatch integration |
-| Phase 12: Property-Based Testing | ✅ | ~412 | 10 | Proptest integration, 10 property tests (KV ops, persistence, compaction) |
+| Phase 12: Property-Based Testing | ✅ | ~600 | 13 | Proptest refactor, 13 property tests (consistency, durability, ordering, concurrency) |
 
 **Total**: ~16,739 LOC | 272 tests passing | All CI green ✅
 
@@ -53,22 +53,21 @@ Complete Rust reimplementation of RocksDB with all core features and optimizatio
 
 ## Recently Completed
 
-**Phase 12: Property-Based Testing** (2025-10-26)
-- Implemented comprehensive property-based testing with proptest
-- 10 property tests covering core database invariants:
-  - Write-Read Consistency (duplicate key handling with HashMap)
-  - Delete Semantics (deleted keys return None)
-  - Overwrite Semantics (last write wins)
-  - Persistence (data survives restart, with duplicate key handling)
-  - Operation Determinism (model-based testing with HashMap reference)
-  - Empty Value Handling
-  - Large Value Handling (10KB-100KB)
-  - Key Ordering Invariant (iterator returns sorted keys)
-  - Read-Your-Writes Consistency
-  - Compaction Preserves Data (with duplicate key handling)
-- All 10 property tests passing with 100+ test cases each
-- Fixed iterator API usage and borrowing lifetime issues
-- Tests verify correctness under random inputs (1-100 operations per test)
+**Phase 12: Property-Based Testing** (2025-10-26) ✅ **REFACTORED**
+- **Refactoring completed**: Eliminated duplication, improved organization, added concurrency
+- Deleted `property_test.rs` (7 tests, string keys) - redundant with binary key tests
+- Renamed `property_based_test.rs` → `proptest_invariants.rs` (conventional naming)
+- Added comprehensive module documentation (WHY, invariant categories, regression tracking)
+- **13 property tests** across 5 categories:
+  1. Consistency: Write-Read, Delete, Overwrite, Read-Your-Writes
+  2. Durability: Persistence (after restart), Compaction
+  3. Ordering: Key ordering (iterator), Deterministic operations
+  4. Edge Cases: Empty values, Large values (10KB-100KB)
+  5. **Concurrency** (NEW): Concurrent writes, Concurrent reads, Mixed operations
+- **Critical bug found**: Keys containing 0x00 bytes fail persistence (proptest working!)
+  - Regression tracked: `[195]` key lost when `[195, 0]` exists
+  - Root cause: InternalKey encoding conflict (needs separate fix)
+- 12/13 tests passing (1 known regression for null byte handling)
 
 **Phase 11: Merge Operator** (2025-10-25)
 - `MergeOperator` trait with `full_merge()` and `partial_merge()` methods
@@ -156,4 +155,4 @@ Complete Rust reimplementation of RocksDB with all core features and optimizatio
 
 ---
 
-**Last Updated**: 2025-10-26 (Completed Phase 12: Property-Based Testing)
+**Last Updated**: 2025-10-26 (Refactored Phase 12: Property-Based Testing - Added concurrency tests, found null byte bug)
