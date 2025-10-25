@@ -5,7 +5,7 @@
 Complete Rust reimplementation of RocksDB with all core features and optimizations.
 
 **Start Date**: 2025-10-23
-**Current Phase**: Phase 7 - Manual Compaction & Properties ✅
+**Current Phase**: Phase 8 - Backup & Restore Engine ✅
 
 ---
 
@@ -25,8 +25,9 @@ Complete Rust reimplementation of RocksDB with all core features and optimizatio
 | Phase 5.1-5.7: Quality & Performance | ✅ | ~4,127 | 46 | Stress tests, Docs, TableCache opt, Crash recovery, Buffer opt |
 | Phase 6.1-6.5: Compaction Enhancements | ✅ | ~1,319 | 25 | Dynamic sizing, Level stats, Subcompaction, Stress tests, Cache stats |
 | Phase 7: Manual Compaction & Properties | ✅ | ~200 | 5 | compact_range API, get_property API, DB introspection |
+| Phase 8: Backup & Restore Engine | ✅ | ~372 | 3 | BackupEngine, create/restore/list/delete, Hard-link optimization |
 
-**Total**: ~15,219 LOC | 244 tests passing | All CI green ✅
+**Total**: ~15,591 LOC | 247 tests passing | All CI green ✅
 
 ---
 
@@ -34,8 +35,8 @@ Complete Rust reimplementation of RocksDB with all core features and optimizatio
 
 | Metric | Current | Target | Status |
 |--------|---------|--------|--------|
-| LOC | 15,019 | ~50,000 | 30% ✅ |
-| Tests | 239 | >80% coverage | Excellent ✅ |
+| LOC | 15,591 | ~50,000 | 31% ✅ |
+| Tests | 247 | >80% coverage | Excellent ✅ |
 | Write Throughput | **104K ops/sec** | 100K | ✅ |
 | Sequential Read | **808K ops/sec** | 200K | **4.0x** ✅ |
 | Random Read | **4.3K ops/sec** | 3K | **1.4x** ✅ |
@@ -47,6 +48,14 @@ Complete Rust reimplementation of RocksDB with all core features and optimizatio
 ---
 
 ## Recently Completed
+
+**Phase 8: Backup & Restore Engine** (2025-10-25)
+- `BackupEngine` - comprehensive backup management system
+- `create_backup()` - create backups with hard-link optimization
+- `restore_backup()` - restore backups to target directory
+- `list_backups()` and `delete_backup()` - backup lifecycle management
+- JSON metadata tracking for SST, WAL, and MANIFEST files
+- 3 comprehensive tests (backup/restore, multiple backups, deletion)
 
 **Phase 7: Manual Compaction & Properties** (2025-10-25)
 - `compact_range()` and `compact_range_cf()` - manual compaction control
@@ -101,4 +110,4 @@ Complete Rust reimplementation of RocksDB with all core features and optimizatio
 
 ---
 
-**Last Updated**: 2025-10-25 (Completed Phase 7: Manual Compaction & Properties)
+**Last Updated**: 2025-10-25 (Completed Phase 8: Backup & Restore Engine)

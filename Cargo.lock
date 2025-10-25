@@ -592,6 +592,8 @@ dependencies = [
  "parking_lot",
  "proptest",
  "rayon",
+ "serde",
+ "serde_json",
  "snap",
  "tempfile",
 ]

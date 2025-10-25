@@ -110,6 +110,18 @@ impl fmt::Display for Status {
 
 impl std::error::Error for Status {}
 
+impl From<std::io::Error> for Status {
+    fn from(err: std::io::Error) -> Self {
+        Status::io_error(err.to_string())
+    }
+}
+
+impl From<serde_json::Error> for Status {
+    fn from(err: serde_json::Error) -> Self {
+        Status::corruption(err.to_string())
+    }
+}
+
 pub type Result<T> = std::result::Result<T, Status>;
 
 #[cfg(test)]

@@ -3,6 +3,7 @@
 #![feature(allocator_api)]
 #![feature(const_trait_impl)]
 
+pub mod backup;
 pub mod cache;
 pub mod checkpoint;
 pub mod column_family;
@@ -18,6 +19,7 @@ pub mod util;
 pub mod version;
 pub mod wal;
 
+pub use backup::{BackupEngine, BackupMetadata};
 pub use checkpoint::Checkpoint;
 pub use column_family::{
     ColumnFamilyDescriptor, ColumnFamilyHandle, ColumnFamilyOptions, DEFAULT_COLUMN_FAMILY_NAME,
