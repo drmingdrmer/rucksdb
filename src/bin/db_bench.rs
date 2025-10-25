@@ -357,5 +357,35 @@ fn main() {
         format_number(table_cache_stats.capacity)
     );
 
+    // Print database properties
+    println!("\n📈 Database Properties:");
+
+    // Files per level
+    println!("\n  Files per level:");
+    for level in 0..7 {
+        if let Some(num_files) = db.get_property(&format!("rocksdb.num-files-at-level{}", level)) {
+            let count: usize = num_files.parse().unwrap_or(0);
+            if count > 0 {
+                println!("    Level {}:      {:>12}", level, format_number(count));
+            }
+        }
+    }
+
+    // Total size
+    if let Some(total_size_str) = db.get_property("rocksdb.total-size")
+        && let Ok(total_size) = total_size_str.parse::<u64>()
+    {
+        let size_mb = total_size as f64 / (1024.0 * 1024.0);
+        println!("\n  Total SST Size: {:>12.2} MB", size_mb);
+    }
+
+    // Statistics
+    if let Some(stats) = db.get_property("rocksdb.stats") {
+        println!("\n  Database Statistics:");
+        for line in stats.lines() {
+            println!("    {}", line);
+        }
+    }
+
     println!("\n✅ Benchmark completed!");
 }

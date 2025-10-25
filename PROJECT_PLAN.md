@@ -5,7 +5,7 @@
 Complete Rust reimplementation of RocksDB with all core features and optimizations.
 
 **Start Date**: 2025-10-23
-**Current Phase**: Phase 6 - Advanced Optimizations ✅
+**Current Phase**: Phase 7 - Manual Compaction & Properties ✅
 
 ---
 
@@ -24,8 +24,9 @@ Complete Rust reimplementation of RocksDB with all core features and optimizatio
 | Phase 4.5: Statistics | ✅ | ~629 | 11 | Atomic counters, Automatic tracking, Metrics |
 | Phase 5.1-5.7: Quality & Performance | ✅ | ~4,127 | 46 | Stress tests, Docs, TableCache opt, Crash recovery, Buffer opt |
 | Phase 6.1-6.5: Compaction Enhancements | ✅ | ~1,319 | 25 | Dynamic sizing, Level stats, Subcompaction, Stress tests, Cache stats |
+| Phase 7: Manual Compaction & Properties | ✅ | ~200 | 5 | compact_range API, get_property API, DB introspection |
 
-**Total**: ~15,019 LOC | 239 tests passing | All CI green ✅
+**Total**: ~15,219 LOC | 244 tests passing | All CI green ✅
 
 ---
 
@@ -47,21 +48,18 @@ Complete Rust reimplementation of RocksDB with all core features and optimizatio
 
 ## Recently Completed
 
-**Phase 6.5: Cache Statistics** (2025-10-25)
-- Added `table_cache_stats()` API method
-- Integrated cache statistics in db_bench
-- Block cache: 90.94% hit rate | Table cache: ~100% hit rate
-- Full visibility into cache performance
+**Phase 7: Manual Compaction & Properties** (2025-10-25)
+- `compact_range()` and `compact_range_cf()` - manual compaction control
+- `get_property()` - query database properties (files per level, total size, stats)
+- 5 new tests for manual compaction and properties
+- Updated db_bench to display database properties and statistics
 
-**Phase 6.4: Compaction Stress Tests**
-- 6 comprehensive stress tests (concurrent writes, large datasets, mixed ops)
-- Fixed concurrent compaction race condition
-- Validated compaction behavior under stress
-
-**Phase 6.1-6.3: Compaction Infrastructure**
+**Phase 6: Compaction Enhancements** (2025-10-25)
 - Dynamic level sizing with priority-based scoring
 - Per-level statistics & read/write amplification tracking
 - Subcompaction planner for parallel execution infrastructure
+- 6 comprehensive stress tests (concurrent writes, large datasets, mixed ops)
+- Cache statistics: Block cache 90.94% hit rate | Table cache ~100% hit rate
 
 ---
 
@@ -103,4 +101,4 @@ Complete Rust reimplementation of RocksDB with all core features and optimizatio
 
 ---
 
-**Last Updated**: 2025-10-25 (Completed Phase 6.5: Cache Statistics)
+**Last Updated**: 2025-10-25 (Completed Phase 7: Manual Compaction & Properties)
