@@ -5,7 +5,7 @@
 Complete Rust reimplementation of RocksDB with all core features and optimizations.
 
 **Start Date**: 2025-10-23
-**Current Phase**: Phase 8 - Backup & Restore Engine ✅
+**Current Phase**: Phase 9 - SST File Import/Export ✅
 
 ---
 
@@ -26,8 +26,9 @@ Complete Rust reimplementation of RocksDB with all core features and optimizatio
 | Phase 6.1-6.5: Compaction Enhancements | ✅ | ~1,319 | 25 | Dynamic sizing, Level stats, Subcompaction, Stress tests, Cache stats |
 | Phase 7: Manual Compaction & Properties | ✅ | ~200 | 5 | compact_range API, get_property API, DB introspection |
 | Phase 8: Backup & Restore Engine | ✅ | ~372 | 3 | BackupEngine, create/restore/list/delete, Hard-link optimization |
+| Phase 9: SST File Import/Export | ✅ | ~206 | 4 | validate_external_file, copy_external_file, IngestExternalFileOptions |
 
-**Total**: ~15,591 LOC | 247 tests passing | All CI green ✅
+**Total**: ~15,797 LOC | 251 tests passing | All CI green ✅
 
 ---
 
@@ -35,8 +36,8 @@ Complete Rust reimplementation of RocksDB with all core features and optimizatio
 
 | Metric | Current | Target | Status |
 |--------|---------|--------|--------|
-| LOC | 15,591 | ~50,000 | 31% ✅ |
-| Tests | 247 | >80% coverage | Excellent ✅ |
+| LOC | 15,797 | ~50,000 | 32% ✅ |
+| Tests | 251 | >80% coverage | Excellent ✅ |
 | Write Throughput | **104K ops/sec** | 100K | ✅ |
 | Sequential Read | **808K ops/sec** | 200K | **4.0x** ✅ |
 | Random Read | **4.3K ops/sec** | 3K | **1.4x** ✅ |
@@ -48,6 +49,13 @@ Complete Rust reimplementation of RocksDB with all core features and optimizatio
 ---
 
 ## Recently Completed
+
+**Phase 9: SST File Import/Export** (2025-10-25)
+- `validate_external_file()` - validates SST file structure and extracts metadata
+- `copy_external_file()` - copies/moves SST files with parent directory creation
+- `IngestExternalFileOptions` - configuration for file ingestion
+- `ExternalFileInfo` - file metadata (size, entries, key range)
+- 4 comprehensive tests (validate, copy, move, error handling)
 
 **Phase 8: Backup & Restore Engine** (2025-10-25)
 - `BackupEngine` - comprehensive backup management system
@@ -84,7 +92,7 @@ Complete Rust reimplementation of RocksDB with all core features and optimizatio
 - Bloom filters, Compression (Snappy/LZ4)
 
 **Quality**: Comprehensive ✅
-- 239 tests (unit, integration, stress, property-based, crash recovery)
+- 251 tests (unit, integration, stress, property-based, crash recovery)
 - 2,287 LOC documentation
 - All CI passing (macOS, Ubuntu, Windows × stable/nightly)
 
@@ -105,9 +113,9 @@ Complete Rust reimplementation of RocksDB with all core features and optimizatio
 - Write batching API improvements
 
 **Option D: Advanced Features**
-- Backup engine, SST import/export, TTL support
-- Rate limiting, write throttling
+- TTL support, Rate limiting, write throttling
+- Additional SST import/export features (ingest_external_file DB integration)
 
 ---
 
-**Last Updated**: 2025-10-25 (Completed Phase 8: Backup & Restore Engine)
+**Last Updated**: 2025-10-25 (Completed Phase 9: SST File Import/Export)

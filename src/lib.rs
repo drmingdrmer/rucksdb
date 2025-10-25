@@ -10,6 +10,7 @@ pub mod column_family;
 pub mod compression;
 pub mod db;
 pub mod filter;
+pub mod import_export;
 pub mod iterator;
 pub mod memtable;
 pub mod statistics;
@@ -26,6 +27,7 @@ pub use column_family::{
 };
 pub use db::{DB, DBOptions, ReadOptions, WriteOptions};
 pub use filter::{BloomFilterPolicy, FilterPolicy};
+pub use import_export::IngestExternalFileOptions;
 pub use statistics::Statistics;
 pub use table::format::CompressionType;
 pub use transaction::{OptimisticTransaction, Snapshot, TransactionDB, WriteBatch, WriteOp};
