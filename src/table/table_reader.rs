@@ -8,6 +8,7 @@ use std::{
 use crate::{
     cache::LRUCache,
     filter::FilterPolicy,
+    memtable::memtable::InternalKey,
     table::{
         block::Block,
         format::{BlockHandle, FOOTER_SIZE, Footer},
@@ -128,6 +129,11 @@ impl TableReader {
 
     /// Get a value by key
     ///
+    /// # Returns
+    /// - `(true, Some(value))` - key found with value
+    /// - `(true, None)` - key found but deleted (deletion marker)
+    /// - `(false, None)` - key not found in this table
+    ///
     /// # Search Algorithm
     /// 1. **Bloom filter check**: Skip disk I/O if key definitely doesn't exist
     /// 2. **Index block scan**: Linear search through index entries
@@ -141,13 +147,13 @@ impl TableReader {
     /// - For production systems with large tables, binary search would be
     ///   better
     /// - Block cache reduces repeated block reads
-    pub fn get(&mut self, key: &Slice) -> Result<Option<Slice>> {
+    pub fn get(&mut self, key: &Slice) -> Result<(bool, Option<Slice>)> {
         // Check filter first to avoid unnecessary disk I/O
         if let (Some(policy), Some(filter_data)) = (&self.filter_policy, &self.filter_data)
             && !policy.may_contain(filter_data, key.data())
         {
             // Filter says key definitely doesn't exist
-            return Ok(None);
+            return Ok((false, None));
         }
         // Filter says key might exist, continue with search
 
@@ -156,10 +162,21 @@ impl TableReader {
         iter.seek_to_first()?;
 
         loop {
-            let index_key = iter.key();
+            let index_key_data = iter.key();
 
-            // If index_key >= key, this data block might contain our key
-            if index_key.data() >= key.data() {
+            // Decode InternalKey from index to get user key for comparison
+            let should_search = match InternalKey::decode(&index_key_data) {
+                Ok(internal_key) => {
+                    // Compare user keys: if index_user_key >= user_key, this block might contain it
+                    internal_key.user_key().data() >= key.data()
+                },
+                Err(_e) => {
+                    // If decode fails, fall back to raw comparison (shouldn't happen)
+                    index_key_data.data() >= key.data()
+                },
+            };
+
+            if should_search {
                 // Decode block handle
                 let handle_data = iter.value();
                 let handle = BlockHandle::decode(handle_data.data())
@@ -178,24 +195,44 @@ impl TableReader {
             }
         }
 
-        Ok(None)
+        Ok((false, None))
     }
 
     /// Search for key in a data block
-    fn search_data_block(&self, block: &Block, key: &Slice) -> Result<Option<Slice>> {
+    /// Keys are stored as InternalKeys (encoded with sequence and type)
+    ///
+    /// # Returns
+    /// - `(true, Some(value))` - key found with value
+    /// - `(true, None)` - key found but deleted (deletion marker)
+    /// - `(false, None)` - key not found in this block
+    fn search_data_block(&self, block: &Block, user_key: &Slice) -> Result<(bool, Option<Slice>)> {
         let mut iter = block.iter();
         iter.seek_to_first()?;
 
         loop {
-            let current_key = iter.key();
+            let internal_key_data = iter.key();
 
-            if current_key == *key {
-                return Ok(Some(iter.value()));
-            }
+            // Decode InternalKey to get user key and check if it's a deletion
+            match InternalKey::decode(&internal_key_data) {
+                Ok(internal_key) => {
+                    let current_user_key = internal_key.user_key();
 
-            if current_key.data() > key.data() {
-                // Key not found
-                return Ok(None);
+                    if current_user_key == user_key {
+                        // Found matching key - check if it's a deletion marker
+                        if internal_key.is_deletion() {
+                            return Ok((true, None)); // Key is deleted
+                        }
+                        return Ok((true, Some(iter.value()))); // Key exists with value
+                    }
+
+                    if current_user_key.data() > user_key.data() {
+                        // Passed the key, not found
+                        return Ok((false, None));
+                    }
+                },
+                Err(_) => {
+                    // Skip corrupted entries
+                },
             }
 
             if !iter.next()? {
@@ -203,7 +240,7 @@ impl TableReader {
             }
         }
 
-        Ok(None)
+        Ok((false, None))
     }
 
     /// Get file size
@@ -277,10 +314,15 @@ mod tests {
         let temp_file = NamedTempFile::new().unwrap();
         let mut builder = TableBuilder::new(temp_file.path()).unwrap();
 
-        for (key, value) in entries {
-            builder
-                .add(&Slice::from(*key), &Slice::from(*value))
-                .unwrap();
+        for (seq, (key, value)) in entries.iter().enumerate() {
+            // Encode as InternalKey with sequence number
+            let internal_key = InternalKey::new(
+                Slice::from(*key),
+                seq as u64 + 1,
+                crate::memtable::memtable::VALUE_TYPE_VALUE,
+            )
+            .encode();
+            builder.add(&internal_key, &Slice::from(*value)).unwrap();
         }
 
         builder.finish(CompressionType::None).unwrap();
@@ -299,7 +341,8 @@ mod tests {
         let temp_file = build_test_table(&[("key1", "value1")]);
         let mut reader = TableReader::open(temp_file.path(), 1, None).unwrap();
 
-        let value = reader.get(&Slice::from("key1")).unwrap();
+        let (found, value) = reader.get(&Slice::from("key1")).unwrap();
+        assert!(found);
         assert_eq!(value, Some(Slice::from("value1")));
     }
 
@@ -310,7 +353,8 @@ mod tests {
         let mut reader = TableReader::open(temp_file.path(), 1, None).unwrap();
 
         for (key, value) in entries {
-            let result = reader.get(&Slice::from(key)).unwrap();
+            let (found, result) = reader.get(&Slice::from(key)).unwrap();
+            assert!(found);
             assert_eq!(result, Some(Slice::from(value)));
         }
     }
@@ -320,12 +364,14 @@ mod tests {
         let temp_file = build_test_table(&[("key1", "value1")]);
         let mut reader = TableReader::open(temp_file.path(), 1, None).unwrap();
 
-        let value = reader.get(&Slice::from("nonexistent")).unwrap();
+        let (found, value) = reader.get(&Slice::from("nonexistent")).unwrap();
+        assert!(!found);
         assert_eq!(value, None);
     }
 
     #[test]
     fn test_table_reader_many_keys() {
+        use crate::memtable::memtable::{InternalKey, VALUE_TYPE_VALUE};
         let mut entries = Vec::new();
         for i in 0..100 {
             entries.push((format!("key{i:04}"), format!("value{i:04}")));
@@ -335,9 +381,13 @@ mod tests {
             let temp_file = NamedTempFile::new().unwrap();
             let mut builder = TableBuilder::new(temp_file.path()).unwrap();
 
-            for (key, value) in &entries {
+            for (seq, (key, value)) in entries.iter().enumerate() {
+                // Encode as InternalKey with sequence number
+                let internal_key =
+                    InternalKey::new(Slice::from(key.as_str()), seq as u64 + 1, VALUE_TYPE_VALUE)
+                        .encode();
                 builder
-                    .add(&Slice::from(key.as_str()), &Slice::from(value.as_str()))
+                    .add(&internal_key, &Slice::from(value.as_str()))
                     .unwrap();
             }
 
@@ -348,7 +398,8 @@ mod tests {
         let mut reader = TableReader::open(temp_file.path(), 1, None).unwrap();
 
         for (key, value) in entries {
-            let result = reader.get(&Slice::from(key.as_str())).unwrap();
+            let (found, result) = reader.get(&Slice::from(key.as_str())).unwrap();
+            assert!(found);
             assert_eq!(result, Some(Slice::from(value.as_str())));
         }
     }

@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use rucksdb::{
     BloomFilterPolicy, Slice,
+    memtable::memtable::{InternalKey, VALUE_TYPE_VALUE},
     table::{CompressionType, TableBuilder, TableReader},
 };
 use tempfile::NamedTempFile;
@@ -19,7 +20,9 @@ fn test_bloom_filter_with_sstable() {
         for i in 0..100 {
             let key = format!("key{i:04}");
             let value = format!("value{i:04}");
-            builder.add(&Slice::from(key), &Slice::from(value)).unwrap();
+            let internal_key =
+                InternalKey::new(Slice::from(key), i as u64 + 1, VALUE_TYPE_VALUE).encode();
+            builder.add(&internal_key, &Slice::from(value)).unwrap();
         }
 
         builder.finish(CompressionType::None).unwrap();
@@ -34,7 +37,7 @@ fn test_bloom_filter_with_sstable() {
         for i in 0..100 {
             let key = format!("key{i:04}");
             let value = reader.get(&Slice::from(key.as_str())).unwrap();
-            assert!(value.is_some(), "Key {key} should exist");
+            assert!(value.1.is_some(), "Key {key} should exist");
         }
 
         // Keys that don't exist should mostly be filtered out
@@ -42,7 +45,7 @@ fn test_bloom_filter_with_sstable() {
         let mut false_positives = 0;
         for i in 100..1000 {
             let key = format!("key{i:04}");
-            if reader.get(&Slice::from(key.as_str())).unwrap().is_some() {
+            if reader.get(&Slice::from(key.as_str())).unwrap().1.is_some() {
                 false_positives += 1;
             }
         }
@@ -74,7 +77,9 @@ fn test_sstable_without_filter() {
         for i in 0..50 {
             let key = format!("test{i:03}");
             let value = format!("value{i:03}");
-            builder.add(&Slice::from(key), &Slice::from(value)).unwrap();
+            let internal_key =
+                InternalKey::new(Slice::from(key), i as u64 + 1, VALUE_TYPE_VALUE).encode();
+            builder.add(&internal_key, &Slice::from(value)).unwrap();
         }
 
         builder.finish(CompressionType::None).unwrap();
@@ -89,11 +94,11 @@ fn test_sstable_without_filter() {
             let key = format!("test{i:03}");
             let expected_value = format!("value{i:03}");
             let value = reader.get(&Slice::from(key.as_str())).unwrap();
-            assert_eq!(value, Some(Slice::from(expected_value)));
+            assert_eq!(value.1, Some(Slice::from(expected_value)));
         }
 
         // Non-existent keys
-        assert_eq!(reader.get(&Slice::from("nonexistent")).unwrap(), None);
+        assert_eq!(reader.get(&Slice::from("nonexistent")).unwrap().1, None);
     }
 }
 
@@ -110,7 +115,9 @@ fn test_filter_effectiveness() {
         for i in 0..1000 {
             let key = format!("present{i:05}");
             let value = format!("val{i:05}");
-            builder.add(&Slice::from(key), &Slice::from(value)).unwrap();
+            let internal_key =
+                InternalKey::new(Slice::from(key), i as u64 + 1, VALUE_TYPE_VALUE).encode();
+            builder.add(&internal_key, &Slice::from(value)).unwrap();
         }
 
         builder.finish(CompressionType::None).unwrap();
@@ -125,14 +132,14 @@ fn test_filter_effectiveness() {
         for i in 0..1000 {
             let key = format!("present{i:05}");
             let value = reader.get(&Slice::from(key.as_str())).unwrap();
-            assert!(value.is_some());
+            assert!(value.1.is_some());
         }
 
         // Count false positives for absent keys
         let mut false_positives = 0;
         for i in 0..5000 {
             let key = format!("absent{i:05}");
-            if reader.get(&Slice::from(key.as_str())).unwrap().is_some() {
+            if reader.get(&Slice::from(key.as_str())).unwrap().1.is_some() {
                 false_positives += 1;
             }
         }

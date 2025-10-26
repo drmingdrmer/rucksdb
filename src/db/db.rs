@@ -454,28 +454,40 @@ impl DB {
         let version = current.read();
 
         // Check level 0 first (newest files have highest numbers)
-        for file in version.get_level_files(0).iter().rev() {
+        let l0_files = version.get_level_files(0);
+        for file in l0_files.iter().rev() {
             self.statistics.record_sstable_read();
             let table = self.get_table(file.number)?;
             let mut table_guard = table.lock().unwrap();
-            if let Some(value) = table_guard.get(key)? {
+            let (found, value) = table_guard.get(key)?;
+            if found {
+                // Key was found in this file (either with value or as deletion marker)
                 self.statistics.record_sstable_hit();
-                self.statistics.record_read(value.size() as u64);
-                return Ok(Some(value));
+                if let Some(ref v) = value {
+                    self.statistics.record_read(v.size() as u64);
+                }
+                return Ok(value);
             }
         }
 
         // Check other levels
         for level in 1..version.files.len() {
-            let files = version.get_overlapping_files(level, key, key);
+            let mut files = version.get_overlapping_files(level, key, key);
+            // Sort files by number in descending order (highest/newest first)
+            // Within same level, higher file numbers are created later
+            files.sort_by(|a, b| b.number.cmp(&a.number));
             for file in files {
                 self.statistics.record_sstable_read();
                 let table = self.get_table(file.number)?;
                 let mut table_guard = table.lock().unwrap();
-                if let Some(value) = table_guard.get(key)? {
+                let (found, value) = table_guard.get(key)?;
+                if found {
+                    // Key was found in this file (either with value or as deletion marker)
                     self.statistics.record_sstable_hit();
-                    self.statistics.record_read(value.size() as u64);
-                    return Ok(Some(value));
+                    if let Some(ref v) = value {
+                        self.statistics.record_read(v.size() as u64);
+                    }
+                    return Ok(value);
                 }
             }
         }
@@ -869,10 +881,17 @@ impl DB {
                         }
                     }
 
-                    // Skip deletion markers
-                    if !internal_key.is_deletion() {
-                        merged.push((key, value));
+                    // Keep deletion markers EXCEPT when target level is bottom (L6)
+                    // Deletion markers need to persist to suppress older versions below
+                    let is_bottom_level = level + 1 >= 6;
+                    if internal_key.is_deletion() && is_bottom_level {
+                        // Drop deletion marker at bottom level - nothing below to suppress
+                        last_user_key = Some(user_key);
+                        continue;
                     }
+
+                    // Add entry (either value or deletion marker for non-bottom levels)
+                    merged.push((key, value));
 
                     last_user_key = Some(user_key);
                 },
@@ -885,30 +904,43 @@ impl DB {
             }
         }
 
-        if merged.is_empty() {
-            return Ok(());
-        }
+        // If all entries were deletion markers dropped at bottom level, merged will be
+        // empty We still need to delete the old files
+        let has_output = !merged.is_empty();
 
-        // Write new file to next level
-        let file_num = {
-            let version_set = cf.version_set();
-            let version_set_guard = version_set.read();
-            version_set_guard.new_file_number()
+        // Write new file to next level (only if we have data)
+        let (file_num, file_size, smallest, largest) = if has_output {
+            let file_num = {
+                let version_set = cf.version_set();
+                let version_set_guard = version_set.read();
+                version_set_guard.new_file_number()
+            };
+            let sst_path = self.db_path.join(format!("{file_num:06}.sst"));
+
+            let mut builder = self.create_table_builder(&sst_path)?;
+            for (key, value) in &merged {
+                builder.add(key, value)?;
+            }
+            builder.finish(self.options.compression_type)?;
+
+            // Get file size and key range
+            let file_size = std::fs::metadata(&sst_path)
+                .map_err(|e| Status::io_error(format!("Failed to get file size: {e}")))?
+                .len();
+
+            // Extract user keys from InternalKeys for file metadata
+            // File metadata stores user keys, not InternalKeys
+            use crate::memtable::memtable::InternalKey;
+            let smallest_internal = InternalKey::decode(&merged.first().unwrap().0)?;
+            let largest_internal = InternalKey::decode(&merged.last().unwrap().0)?;
+            let smallest = smallest_internal.user_key().clone();
+            let largest = largest_internal.user_key().clone();
+
+            (Some(file_num), file_size, smallest, largest)
+        } else {
+            // No output file - all entries were deletion markers dropped at bottom level
+            (None, 0, Slice::empty(), Slice::empty())
         };
-        let sst_path = self.db_path.join(format!("{file_num:06}.sst"));
-
-        let mut builder = self.create_table_builder(&sst_path)?;
-        for (key, value) in &merged {
-            builder.add(key, value)?;
-        }
-        builder.finish(self.options.compression_type)?;
-
-        // Get file size and key range
-        let file_size = std::fs::metadata(&sst_path)
-            .map_err(|e| Status::io_error(format!("Failed to get file size: {e}")))?
-            .len();
-        let smallest = merged.first().unwrap().0.clone();
-        let largest = merged.last().unwrap().0.clone();
 
         // Record compaction statistics
         let bytes_read: u64 = level_files.iter().map(|f| f.file_size).sum::<u64>()
@@ -940,7 +972,7 @@ impl DB {
         // Create VersionEdit
         let mut edit = VersionEdit::new();
 
-        // Delete old files
+        // Delete old files (always, even if merged is empty)
         for file in &level_files {
             edit.delete_file(level, file.number);
         }
@@ -948,9 +980,11 @@ impl DB {
             edit.delete_file(level + 1, file.number);
         }
 
-        // Add new file
-        let file_meta = FileMetaData::new(file_num, file_size, smallest, largest);
-        edit.add_file(level + 1, file_meta);
+        // Add new file (only if we created one)
+        if let Some(num) = file_num {
+            let file_meta = FileMetaData::new(num, file_size, smallest, largest);
+            edit.add_file(level + 1, file_meta);
+        }
 
         // Apply edit
         {

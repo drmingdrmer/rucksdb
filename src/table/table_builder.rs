@@ -2,6 +2,7 @@ use std::{fs::File, io::Write, path::Path, sync::Arc};
 
 use crate::{
     filter::FilterPolicy,
+    memtable::memtable::InternalKey,
     table::{
         block_builder::BlockBuilder,
         format::{BlockHandle, CompressionType, DEFAULT_BLOCK_SIZE, Footer},
@@ -74,8 +75,19 @@ impl TableBuilder {
         }
 
         // Collect key for filter if filter policy is set
+        // Extract user key from InternalKey for bloom filter
         if self.filter_policy.is_some() {
-            self.filter_keys.push(key.data().to_vec());
+            match InternalKey::decode(key) {
+                Ok(internal_key) => {
+                    // Use user key for bloom filter (not InternalKey)
+                    self.filter_keys
+                        .push(internal_key.user_key().data().to_vec());
+                },
+                Err(_) => {
+                    // If decode fails, skip filter entry (shouldn't happen in
+                    // normal operation)
+                },
+            }
         }
 
         self.last_key.clear();

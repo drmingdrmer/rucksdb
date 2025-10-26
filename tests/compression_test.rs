@@ -1,5 +1,6 @@
 use rucksdb::{
     Slice,
+    memtable::memtable::{InternalKey, VALUE_TYPE_VALUE},
     table::{CompressionType, TableBuilder, TableReader},
 };
 use tempfile::NamedTempFile;
@@ -15,7 +16,9 @@ fn test_no_compression() {
         for i in 0..100 {
             let key = format!("key{i:04}");
             let value = format!("value{i:04}");
-            builder.add(&Slice::from(key), &Slice::from(value)).unwrap();
+            let internal_key =
+                InternalKey::new(Slice::from(key), i as u64 + 1, VALUE_TYPE_VALUE).encode();
+            builder.add(&internal_key, &Slice::from(value)).unwrap();
         }
 
         builder.finish(CompressionType::None).unwrap();
@@ -29,7 +32,7 @@ fn test_no_compression() {
             let key = format!("key{i:04}");
             let expected_value = format!("value{i:04}");
             let value = reader.get(&Slice::from(key.as_str())).unwrap();
-            assert_eq!(value, Some(Slice::from(expected_value)));
+            assert_eq!(value.1, Some(Slice::from(expected_value)));
         }
     }
 }
@@ -47,7 +50,9 @@ fn test_snappy_compression() {
             let key = format!("key{i:04}");
             let value = "This is a highly repetitive value that should compress well with Snappy!"
                 .to_string();
-            builder.add(&Slice::from(key), &Slice::from(value)).unwrap();
+            let internal_key =
+                InternalKey::new(Slice::from(key), i as u64 + 1, VALUE_TYPE_VALUE).encode();
+            builder.add(&internal_key, &Slice::from(value)).unwrap();
         }
 
         builder.finish(CompressionType::Snappy).unwrap();
@@ -62,7 +67,7 @@ fn test_snappy_compression() {
             let expected_value =
                 "This is a highly repetitive value that should compress well with Snappy!";
             let value = reader.get(&Slice::from(key.as_str())).unwrap();
-            assert_eq!(value, Some(Slice::from(expected_value)));
+            assert_eq!(value.1, Some(Slice::from(expected_value)));
         }
     }
 
@@ -82,7 +87,9 @@ fn test_lz4_compression() {
             let key = format!("key{i:04}");
             let value = "LZ4 compression is very fast and provides excellent compression ratios!"
                 .to_string();
-            builder.add(&Slice::from(key), &Slice::from(value)).unwrap();
+            let internal_key =
+                InternalKey::new(Slice::from(key), i as u64 + 1, VALUE_TYPE_VALUE).encode();
+            builder.add(&internal_key, &Slice::from(value)).unwrap();
         }
 
         builder.finish(CompressionType::Lz4).unwrap();
@@ -97,7 +104,7 @@ fn test_lz4_compression() {
             let expected_value =
                 "LZ4 compression is very fast and provides excellent compression ratios!";
             let value = reader.get(&Slice::from(key.as_str())).unwrap();
-            assert_eq!(value, Some(Slice::from(expected_value)));
+            assert_eq!(value.1, Some(Slice::from(expected_value)));
         }
     }
 
@@ -120,7 +127,9 @@ fn test_compression_with_varied_data() {
             } else {
                 format!("Random_{i}_data_{}", i * 97 % 256) // Less compressible
             };
-            builder.add(&Slice::from(key), &Slice::from(value)).unwrap();
+            let internal_key =
+                InternalKey::new(Slice::from(key), i as u64 + 1, VALUE_TYPE_VALUE).encode();
+            builder.add(&internal_key, &Slice::from(value)).unwrap();
         }
 
         builder.finish(CompressionType::None).unwrap();
@@ -138,7 +147,7 @@ fn test_compression_with_varied_data() {
                 format!("Random_{i}_data_{}", i * 97 % 256)
             };
             let value = reader.get(&Slice::from(key.as_str())).unwrap();
-            assert_eq!(value, Some(Slice::from(expected_value)));
+            assert_eq!(value.1, Some(Slice::from(expected_value)));
         }
     }
 
@@ -157,7 +166,9 @@ fn test_large_values_compression() {
             let key = format!("bigkey{i:04}");
             // Large repetitive value (10KB)
             let value = format!("Pattern_{i}_").repeat(1000);
-            builder.add(&Slice::from(key), &Slice::from(value)).unwrap();
+            let internal_key =
+                InternalKey::new(Slice::from(key), i as u64 + 1, VALUE_TYPE_VALUE).encode();
+            builder.add(&internal_key, &Slice::from(value)).unwrap();
         }
 
         builder.finish(CompressionType::None).unwrap();
@@ -171,7 +182,7 @@ fn test_large_values_compression() {
             let key = format!("bigkey{i:04}");
             let expected_value = format!("Pattern_{i}_").repeat(1000);
             let value = reader.get(&Slice::from(key.as_str())).unwrap();
-            assert_eq!(value, Some(Slice::from(expected_value)));
+            assert_eq!(value.1, Some(Slice::from(expected_value)));
         }
     }
 

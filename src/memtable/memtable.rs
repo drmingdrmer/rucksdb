@@ -195,10 +195,9 @@ impl MemTable {
                     continue;
                 }
 
-                // Only add non-deletion entries
-                if !internal_key.is_deletion() {
-                    result.push((user_key.clone(), value));
-                }
+                // Include ALL entries (both values and deletion markers)
+                // Deletion markers must be flushed to SST to suppress older versions
+                result.push((internal_key_data, value));
 
                 last_user_key = Some(user_key);
             }

@@ -124,9 +124,13 @@ mod tests {
     use crate::{CompressionType, table::TableBuilder, util::Slice};
 
     fn create_test_table(path: &std::path::Path, _file_number: u64) -> Result<()> {
+        use crate::memtable::memtable::{InternalKey, VALUE_TYPE_VALUE};
         let mut builder = TableBuilder::new(path)?;
-        builder.add(&Slice::from("key1"), &Slice::from("value1"))?;
-        builder.add(&Slice::from("key2"), &Slice::from("value2"))?;
+        // Encode keys as InternalKeys with sequence numbers
+        let key1 = InternalKey::new(Slice::from("key1"), 1, VALUE_TYPE_VALUE).encode();
+        let key2 = InternalKey::new(Slice::from("key2"), 2, VALUE_TYPE_VALUE).encode();
+        builder.add(&key1, &Slice::from("value1"))?;
+        builder.add(&key2, &Slice::from("value2"))?;
         builder.finish(CompressionType::None)?;
         Ok(())
     }
@@ -152,7 +156,8 @@ mod tests {
         // Read from table
         {
             let mut table = table1.lock().unwrap();
-            let value = table.get(&Slice::from("key1")).unwrap();
+            let (found, value) = table.get(&Slice::from("key1")).unwrap();
+            assert!(found);
             assert_eq!(value, Some(Slice::from("value1")));
         }
 
@@ -218,7 +223,8 @@ mod tests {
                 for _ in 0..100 {
                     let table = cache.get_table(1).unwrap();
                     let mut t = table.lock().unwrap();
-                    let value = t.get(&Slice::from("key1")).unwrap();
+                    let (found, value) = t.get(&Slice::from("key1")).unwrap();
+                    assert!(found);
                     assert_eq!(value, Some(Slice::from("value1")));
                 }
             }));

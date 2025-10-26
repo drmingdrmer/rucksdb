@@ -189,6 +189,7 @@ mod tests {
 
     #[test]
     fn test_validate_external_file() {
+        use crate::memtable::memtable::{InternalKey, VALUE_TYPE_VALUE};
         let temp_file = NamedTempFile::with_suffix(".sst").unwrap();
 
         // Create an SST file directly using TableBuilder
@@ -197,7 +198,10 @@ mod tests {
             for i in 0..100 {
                 let key = format!("key{:03}", i);
                 let value = format!("value{}", i);
-                builder.add(&Slice::from(key), &Slice::from(value)).unwrap();
+                // Encode as InternalKey with sequence number
+                let internal_key =
+                    InternalKey::new(Slice::from(key), i as u64 + 1, VALUE_TYPE_VALUE).encode();
+                builder.add(&internal_key, &Slice::from(value)).unwrap();
             }
             builder.finish(CompressionType::None).unwrap();
         }
@@ -208,12 +212,16 @@ mod tests {
 
         assert!(info.file_size > 0);
         assert_eq!(info.num_entries, 100);
-        assert_eq!(info.smallest_key.data(), b"key000");
-        assert_eq!(info.largest_key.data(), b"key099");
+        // Decode InternalKeys to get user keys
+        let smallest_internal = InternalKey::decode(&info.smallest_key).unwrap();
+        let largest_internal = InternalKey::decode(&info.largest_key).unwrap();
+        assert_eq!(smallest_internal.user_key().data(), b"key000");
+        assert_eq!(largest_internal.user_key().data(), b"key099");
     }
 
     #[test]
     fn test_copy_external_file() {
+        use crate::memtable::memtable::{InternalKey, VALUE_TYPE_VALUE};
         let source_file = NamedTempFile::with_suffix(".sst").unwrap();
         let target_dir = TempDir::new().unwrap();
 
@@ -223,7 +231,10 @@ mod tests {
             for i in 0..50 {
                 let key = format!("k{:02}", i);
                 let value = format!("v{}", i);
-                builder.add(&Slice::from(key), &Slice::from(value)).unwrap();
+                // Encode as InternalKey with sequence number
+                let internal_key =
+                    InternalKey::new(Slice::from(key), i as u64 + 1, VALUE_TYPE_VALUE).encode();
+                builder.add(&internal_key, &Slice::from(value)).unwrap();
             }
             builder.finish(CompressionType::None).unwrap();
         }
@@ -246,6 +257,7 @@ mod tests {
 
     #[test]
     fn test_move_external_file() {
+        use crate::memtable::memtable::{InternalKey, VALUE_TYPE_VALUE};
         let source_dir = TempDir::new().unwrap();
         let target_dir = TempDir::new().unwrap();
 
@@ -256,7 +268,10 @@ mod tests {
             for i in 0..30 {
                 let key = format!("key{:02}", i);
                 let value = format!("val{}", i);
-                builder.add(&Slice::from(key), &Slice::from(value)).unwrap();
+                // Encode as InternalKey with sequence number
+                let internal_key =
+                    InternalKey::new(Slice::from(key), i as u64 + 1, VALUE_TYPE_VALUE).encode();
+                builder.add(&internal_key, &Slice::from(value)).unwrap();
             }
             builder.finish(CompressionType::None).unwrap();
         }
@@ -284,7 +299,10 @@ mod tests {
 
     #[test]
     fn test_ingest_external_file() {
-        use crate::{DB, DBOptions, ReadOptions, WriteOptions};
+        use crate::{
+            DB, DBOptions, ReadOptions, WriteOptions,
+            memtable::memtable::{InternalKey, VALUE_TYPE_VALUE},
+        };
 
         let db_dir = TempDir::new().unwrap();
         let external_dir = TempDir::new().unwrap();
@@ -296,7 +314,11 @@ mod tests {
             for i in 100..120 {
                 let key = format!("ext_key{:03}", i);
                 let value = format!("ext_value{}", i);
-                builder.add(&Slice::from(key), &Slice::from(value)).unwrap();
+                // Encode as InternalKey with sequence number
+                let internal_key =
+                    InternalKey::new(Slice::from(key), (i - 100) as u64 + 1, VALUE_TYPE_VALUE)
+                        .encode();
+                builder.add(&internal_key, &Slice::from(value)).unwrap();
             }
             builder.finish(CompressionType::None).unwrap();
         }
@@ -350,7 +372,10 @@ mod tests {
 
     #[test]
     fn test_ingest_external_file_with_move() {
-        use crate::{DB, DBOptions, ReadOptions};
+        use crate::{
+            DB, DBOptions, ReadOptions,
+            memtable::memtable::{InternalKey, VALUE_TYPE_VALUE},
+        };
 
         let db_dir = TempDir::new().unwrap();
         let external_dir = TempDir::new().unwrap();
@@ -362,7 +387,11 @@ mod tests {
             for i in 200..210 {
                 let key = format!("move_key{:03}", i);
                 let value = format!("move_value{}", i);
-                builder.add(&Slice::from(key), &Slice::from(value)).unwrap();
+                // Encode as InternalKey with sequence number
+                let internal_key =
+                    InternalKey::new(Slice::from(key), (i - 200) as u64 + 1, VALUE_TYPE_VALUE)
+                        .encode();
+                builder.add(&internal_key, &Slice::from(value)).unwrap();
             }
             builder.finish(CompressionType::None).unwrap();
         }
