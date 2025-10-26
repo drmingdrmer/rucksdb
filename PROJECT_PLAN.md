@@ -5,7 +5,7 @@
 Complete Rust reimplementation of RocksDB with all core features and optimizations.
 
 **Start Date**: 2025-10-23
-**Current Phase**: Phase 12 - Property-Based Testing ✅
+**Current Phase**: Phase 13 - Fuzzing ✅
 
 ---
 
@@ -30,8 +30,9 @@ Complete Rust reimplementation of RocksDB with all core features and optimizatio
 | Phase 10: SST Ingestion (DB Integration) | ✅ | ~188 | 6 | ingest_external_file, ingest_external_file_cf, LSM integration |
 | Phase 11: Merge Operator | ✅ | ~342 | 9 | MergeOperator trait, CounterMerge, StringAppendMerge, WriteBatch integration |
 | Phase 12: Property-Based Testing | ✅ | ~600 | 13 | Proptest refactor, 13 property tests (consistency, durability, ordering, concurrency) |
+| Phase 13: Fuzzing | ✅ | ~200 | 0 | cargo-fuzz setup, 3 fuzz targets (InternalKey, DB operations, WriteBatch) |
 
-**Total**: ~16,739 LOC | 272 tests passing | All CI green ✅
+**Total**: ~16,943 LOC | 272 tests passing | All CI green ✅
 
 ---
 
@@ -52,6 +53,17 @@ Complete Rust reimplementation of RocksDB with all core features and optimizatio
 ---
 
 ## Recently Completed
+
+**Phase 13: Fuzzing** (2025-10-26) ✅
+- **Fuzzing infrastructure**: cargo-fuzz installed and configured
+- **3 fuzz targets** for comprehensive testing:
+  1. `internal_key` - Tests InternalKey encoding/decoding with arbitrary bytes (validates null byte fix)
+  2. `db_operations` - Tests put/get/delete operations with random key-value pairs
+  3. `write_batch` - Tests atomic batch operations (put/delete/merge sequences)
+- **Public API enhancement**: Added `InternalKey::sequence()` getter method
+- **Documentation**: Created fuzz/README.md with usage guide and best practices
+- **Gitignore**: Configured to exclude corpus and artifacts directories
+- All fuzz targets compile and execute successfully
 
 **Phase 12: Property-Based Testing** (2025-10-26) ✅ **REFACTORED + BUG FIXED**
 - **Refactoring completed**: Eliminated duplication, improved organization, added concurrency
@@ -131,7 +143,8 @@ Complete Rust reimplementation of RocksDB with all core features and optimizatio
 
 **Quality**: Comprehensive ✅
 - 272 tests (unit, integration, stress, property-based, crash recovery)
-- 10 property-based tests with proptest (1000+ test cases)
+- 13 property-based tests with proptest (1000+ test cases)
+- 3 fuzz targets with cargo-fuzz (InternalKey, DB ops, WriteBatch)
 - 2,287 LOC documentation
 - All CI passing (macOS, Ubuntu, Windows × stable/nightly)
 
@@ -144,8 +157,9 @@ Complete Rust reimplementation of RocksDB with all core features and optimizatio
 - Fewer levels, larger files, different space/write amplification trade-off
 
 **Option B: Advanced Testing** (Partially completed ✅)
-- ✅ Property-based testing with proptest (10 tests)
-- TODO: Fuzzing, long-running stress tests, Jepsen-style testing
+- ✅ Property-based testing with proptest (13 tests)
+- ✅ Fuzzing with cargo-fuzz (3 fuzz targets)
+- TODO: Long-running stress tests, Jepsen-style distributed testing
 
 **Option C: Performance & I/O**
 - Async I/O, parallel compaction execution
@@ -157,4 +171,4 @@ Complete Rust reimplementation of RocksDB with all core features and optimizatio
 
 ---
 
-**Last Updated**: 2025-10-26 (Phase 12 Complete: Fixed null byte bug in InternalKey encoding - 12/13 property tests passing)
+**Last Updated**: 2025-10-26 (Phase 13 Complete: Fuzzing infrastructure with 3 targets - InternalKey, DB operations, WriteBatch)

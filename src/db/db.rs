@@ -10,6 +10,7 @@ use crate::{
     cache::{LRUCache, TableCache},
     column_family::{ColumnFamilyHandle, ColumnFamilySet},
     filter::{BloomFilterPolicy, FilterPolicy},
+    memtable::memtable::InternalKey,
     merge::MergeOperator,
     table::{CompressionType, TableBuilder, TableReader},
     util::{Result, Slice, Status},
@@ -817,13 +818,71 @@ impl DB {
         }
 
         // Sort and deduplicate (keeping newest values)
-        all_entries.sort_by(|a, b| a.0.data().cmp(b.0.data()));
-        let mut merged: Vec<(Slice, Slice)> = Vec::new();
-        for (key, value) in all_entries {
-            if merged.is_empty() || merged.last().unwrap().0 != key {
-                merged.push((key, value));
+        // Decode InternalKeys for proper sorting
+        all_entries.sort_by(|a, b| {
+            // Handle potential decode errors gracefully
+            let key_a = match InternalKey::decode(&a.0) {
+                Ok(k) => k,
+                Err(_) => {
+                    // If decode fails, treat it as a plain user key and compare raw bytes
+                    return a.0.data().cmp(b.0.data());
+                },
+            };
+            let key_b = match InternalKey::decode(&b.0) {
+                Ok(k) => k,
+                Err(_) => {
+                    // If decode fails, treat it as a plain user key and compare raw bytes
+                    return a.0.data().cmp(b.0.data());
+                },
+            };
+
+            // First compare user keys
+            match key_a.user_key().data().cmp(key_b.user_key().data()) {
+                std::cmp::Ordering::Equal => {
+                    // For same user key, sort by sequence (descending - higher sequence first)
+                    match key_b.sequence().cmp(&key_a.sequence()) {
+                        std::cmp::Ordering::Equal => {
+                            // If sequences are equal, sort by type
+                            key_a.value_type.cmp(&key_b.value_type)
+                        },
+                        other => other,
+                    }
+                },
+                other => other,
             }
-            // Keep only the latest value for duplicate keys
+        });
+
+        let mut merged: Vec<(Slice, Slice)> = Vec::new();
+        let mut last_user_key: Option<Slice> = None;
+
+        for (key, value) in all_entries {
+            // Try to decode as InternalKey
+            match InternalKey::decode(&key) {
+                Ok(internal_key) => {
+                    let user_key = internal_key.user_key().clone();
+
+                    // Skip if we've already seen this user_key (keep first = highest sequence)
+                    #[allow(clippy::collapsible_if)]
+                    if let Some(ref last) = last_user_key {
+                        if last == &user_key {
+                            continue;
+                        }
+                    }
+
+                    // Skip deletion markers
+                    if !internal_key.is_deletion() {
+                        merged.push((key, value));
+                    }
+
+                    last_user_key = Some(user_key);
+                },
+                Err(_) => {
+                    // Skip entries that can't be decoded as InternalKeys
+                    // All entries in our system should be InternalKeys
+                    // If we can't decode one, it's likely corrupted data
+                    continue;
+                },
+            }
         }
 
         if merged.is_empty() {

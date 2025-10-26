@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use crate::{
+    memtable::memtable::InternalKey,
     util::Slice,
     version::{
         level_stats::AllLevelStats,
@@ -66,7 +67,33 @@ impl Version {
             self.update_level_stats(level);
             // Sort files at level 1+ by smallest key
             if level > 0 {
-                self.files[level].sort_by(|a, b| a.smallest.data().cmp(b.smallest.data()));
+                self.files[level].sort_by(|a, b| {
+                    // Decode InternalKeys for proper comparison
+                    let key_a = match InternalKey::decode(&a.smallest) {
+                        Ok(k) => k,
+                        Err(_) => {
+                            // If decode fails, fall back to raw byte comparison
+                            return a.smallest.data().cmp(b.smallest.data());
+                        },
+                    };
+                    let key_b = match InternalKey::decode(&b.smallest) {
+                        Ok(k) => k,
+                        Err(_) => {
+                            // If decode fails, fall back to raw byte comparison
+                            return a.smallest.data().cmp(b.smallest.data());
+                        },
+                    };
+
+                    // Compare user keys first
+                    match key_a.user_key().data().cmp(key_b.user_key().data()) {
+                        std::cmp::Ordering::Equal => {
+                            // For same user key, sort by sequence (descending - higher sequence
+                            // first)
+                            key_b.sequence().cmp(&key_a.sequence())
+                        },
+                        other => other,
+                    }
+                });
             }
         }
     }

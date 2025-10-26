@@ -29,10 +29,10 @@ impl InternalKey {
 
     pub fn encode(&self) -> Slice {
         let key_len = self.user_key.size();
-        let mut buf = Vec::with_capacity(key_len + 10); // key + len_byte + 8 bytes seq + 1 byte type
+        let mut buf = Vec::with_capacity(key_len + 11); // key + 2 len_bytes + 8 bytes seq + 1 byte type
 
-        // Encode key length as single byte (supports keys up to 255 bytes)
-        buf.push(key_len as u8);
+        // Encode key length as u16 (supports keys up to 64KB)
+        buf.extend_from_slice(&(key_len as u16).to_be_bytes());
         buf.extend_from_slice(self.user_key.data());
 
         // Encode sequence in reverse order for descending sort
@@ -43,19 +43,23 @@ impl InternalKey {
     }
 
     pub fn decode(data: &Slice) -> Result<Self> {
-        if data.size() < 10 {
+        if data.size() < 11 {
             return Err(Status::corruption("InternalKey too short"));
         }
 
-        // First byte is key length
-        let key_len = data.data()[0] as usize;
-        if data.size() < key_len + 10 {
+        // First 2 bytes are key length (u16)
+        let len_bytes: [u8; 2] = data.data()[0..2]
+            .try_into()
+            .map_err(|_| Status::corruption("Invalid key length"))?;
+        let key_len = u16::from_be_bytes(len_bytes) as usize;
+
+        if data.size() < key_len + 11 {
             return Err(Status::corruption("InternalKey corrupted: invalid length"));
         }
 
-        let user_key = Slice::from(&data.data()[1..1 + key_len]);
+        let user_key = Slice::from(&data.data()[2..2 + key_len]);
 
-        let seq_start = 1 + key_len;
+        let seq_start = 2 + key_len;
         let seq_bytes: [u8; 8] = data.data()[seq_start..seq_start + 8]
             .try_into()
             .map_err(|_| Status::corruption("Invalid sequence number"))?;
@@ -72,6 +76,10 @@ impl InternalKey {
 
     pub fn user_key(&self) -> &Slice {
         &self.user_key
+    }
+
+    pub fn sequence(&self) -> u64 {
+        self.sequence
     }
 
     pub fn is_deletion(&self) -> bool {

@@ -1,0 +1,35 @@
+[package]
+name = "rucksdb-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+
+[dependencies.rucksdb]
+path = ".."
+
+[[bin]]
+name = "db_operations"
+path = "fuzz_targets/db_operations.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "internal_key"
+path = "fuzz_targets/internal_key.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "write_batch"
+path = "fuzz_targets/write_batch.rs"
+test = false
+doc = false
+bench = false
