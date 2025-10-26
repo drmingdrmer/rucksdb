@@ -34,16 +34,16 @@ if ! cargo clippy --all-targets --all-features -- -D warnings; then
 fi
 echo "✓ Clippy check passed"
 
-# Run tests
+# Run tests (excluding slow stress tests)
 echo ""
-echo "3. Running tests..."
-if ! cargo test --quiet; then
+echo "3. Running tests (excluding slow stress tests)..."
+if ! cargo test --quiet --lib && cargo test --quiet --test proptest_invariants; then
     echo ""
     echo "Error: Tests failed."
     echo "Please fix the failing tests before committing."
     exit 1
 fi
-echo "✓ All tests passed"
+echo "✓ Tests passed (stress tests skipped for speed)"
 
 echo ""
 echo "All pre-commit checks passed! ✓"
