@@ -28,9 +28,13 @@ impl InternalKey {
     }
 
     pub fn encode(&self) -> Slice {
-        let mut buf = self.user_key.data().to_vec();
-        // Add separator to ensure proper grouping of same user_key
-        buf.push(0x00);
+        let key_len = self.user_key.size();
+        let mut buf = Vec::with_capacity(key_len + 10); // key + len_byte + 8 bytes seq + 1 byte type
+
+        // Encode key length as single byte (supports keys up to 255 bytes)
+        buf.push(key_len as u8);
+        buf.extend_from_slice(self.user_key.data());
+
         // Encode sequence in reverse order for descending sort
         let reversed_seq = u64::MAX - self.sequence;
         buf.extend_from_slice(&reversed_seq.to_be_bytes());
@@ -43,12 +47,15 @@ impl InternalKey {
             return Err(Status::corruption("InternalKey too short"));
         }
 
-        // Find separator (0x00)
-        let key_len = data.size() - 10; // user_key + separator + 8 bytes seq + 1 byte type
-        let user_key = Slice::from(&data.data()[..key_len]);
+        // First byte is key length
+        let key_len = data.data()[0] as usize;
+        if data.size() < key_len + 10 {
+            return Err(Status::corruption("InternalKey corrupted: invalid length"));
+        }
 
-        // Skip separator at key_len
-        let seq_start = key_len + 1;
+        let user_key = Slice::from(&data.data()[1..1 + key_len]);
+
+        let seq_start = 1 + key_len;
         let seq_bytes: [u8; 8] = data.data()[seq_start..seq_start + 8]
             .try_into()
             .map_err(|_| Status::corruption("Invalid sequence number"))?;
