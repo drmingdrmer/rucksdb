@@ -813,51 +813,62 @@ impl DB {
             (level_files, next_level_files)
         };
 
+        // Start timing for compaction
+        let start_time = std::time::Instant::now();
+
         // Execute compaction (parallel or sequential based on configuration)
-        let output_files =
-            if self.options.parallel_compaction_threads > 0 && self.options.enable_subcompaction {
-                // Use parallel compaction executor
-                let filter_policy = self.options.filter_bits_per_key.map(|bits_per_key| {
-                    Arc::new(BloomFilterPolicy::new(bits_per_key)) as Arc<dyn FilterPolicy>
-                });
+        let (output_files, num_subcompactions) = if self.options.parallel_compaction_threads > 0
+            && self.options.enable_subcompaction
+        {
+            // Use parallel compaction executor
+            let filter_policy = self.options.filter_bits_per_key.map(|bits_per_key| {
+                Arc::new(BloomFilterPolicy::new(bits_per_key)) as Arc<dyn FilterPolicy>
+            });
 
-                let config = ParallelCompactionConfig {
-                    max_threads: self.options.parallel_compaction_threads,
-                    subcompaction_config: SubcompactionConfig {
-                        min_file_size: self.options.subcompaction_min_size,
-                        target_subcompactions: self.options.parallel_compaction_threads,
-                        enable_parallel: true,
-                    },
+            let config = ParallelCompactionConfig {
+                max_threads: self.options.parallel_compaction_threads,
+                subcompaction_config: SubcompactionConfig {
+                    min_file_size: self.options.subcompaction_min_size,
+                    target_subcompactions: self.options.parallel_compaction_threads,
                     enable_parallel: true,
-                };
-
-                let executor = ParallelCompactionExecutor::new(
-                    config,
-                    self.db_path.clone(),
-                    self.options.compression_type,
-                    filter_policy,
-                );
-
-                let results = executor.execute_compaction(
-                    level,
-                    level_files.clone(),
-                    next_level_files.clone(),
-                    &|| {
-                        let version_set = cf.version_set();
-                        let version_set_guard = version_set.read();
-                        version_set_guard.new_file_number()
-                    },
-                )?;
-
-                // Collect output files from results
-                results
-                    .into_iter()
-                    .filter_map(|r| r.file_meta)
-                    .collect::<Vec<_>>()
-            } else {
-                // Sequential compaction (original implementation)
-                self.execute_sequential_compaction(level, &level_files, &next_level_files, &cf)?
+                },
+                enable_parallel: true,
             };
+
+            let executor = ParallelCompactionExecutor::new(
+                config,
+                self.db_path.clone(),
+                self.options.compression_type,
+                filter_policy,
+            );
+
+            let results = executor.execute_compaction(
+                level,
+                level_files.clone(),
+                next_level_files.clone(),
+                &|| {
+                    let version_set = cf.version_set();
+                    let version_set_guard = version_set.read();
+                    version_set_guard.new_file_number()
+                },
+            )?;
+
+            // Collect output files and count subcompactions
+            let num_subcompactions = results.len() as u64;
+            let output_files = results
+                .into_iter()
+                .filter_map(|r| r.file_meta)
+                .collect::<Vec<_>>();
+            (output_files, num_subcompactions)
+        } else {
+            // Sequential compaction (original implementation)
+            let output_files =
+                self.execute_sequential_compaction(level, &level_files, &next_level_files, &cf)?;
+            (output_files, 0) // Sequential doesn't use subcompactions
+        };
+
+        // Calculate elapsed time
+        let elapsed_micros = start_time.elapsed().as_micros() as u64;
 
         // Calculate statistics
         let file_size: u64 = output_files.iter().map(|f| f.file_size).sum();
@@ -866,8 +877,25 @@ impl DB {
         let bytes_read: u64 = level_files.iter().map(|f| f.file_size).sum::<u64>()
             + next_level_files.iter().map(|f| f.file_size).sum::<u64>();
         let num_input_files = (level_files.len() + next_level_files.len()) as u64;
-        self.statistics
-            .record_compaction(bytes_read, file_size, num_input_files);
+
+        if num_subcompactions > 0 {
+            // Parallel compaction
+            self.statistics.record_parallel_compaction(
+                bytes_read,
+                file_size,
+                num_input_files,
+                num_subcompactions,
+                elapsed_micros,
+            );
+        } else {
+            // Sequential compaction
+            self.statistics.record_sequential_compaction(
+                bytes_read,
+                file_size,
+                num_input_files,
+                elapsed_micros,
+            );
+        }
 
         // Record per-level statistics
         {

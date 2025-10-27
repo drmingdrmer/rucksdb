@@ -40,6 +40,10 @@ pub struct Statistics {
     pub compaction_bytes_read: AtomicU64,
     pub compaction_bytes_written: AtomicU64,
     pub num_files_compacted: AtomicU64,
+    pub num_parallel_compactions: AtomicU64,
+    pub num_sequential_compactions: AtomicU64,
+    pub num_subcompactions: AtomicU64,
+    pub compaction_time_micros: AtomicU64,
 
     // Bloom filter stats
     pub bloom_filter_useful: AtomicU64,
@@ -149,6 +153,39 @@ impl Statistics {
             .fetch_add(num_files, Ordering::Relaxed);
     }
 
+    #[inline]
+    pub fn record_parallel_compaction(
+        &self,
+        bytes_read: u64,
+        bytes_written: u64,
+        num_files: u64,
+        num_subcompactions: u64,
+        time_micros: u64,
+    ) {
+        self.record_compaction(bytes_read, bytes_written, num_files);
+        self.num_parallel_compactions
+            .fetch_add(1, Ordering::Relaxed);
+        self.num_subcompactions
+            .fetch_add(num_subcompactions, Ordering::Relaxed);
+        self.compaction_time_micros
+            .fetch_add(time_micros, Ordering::Relaxed);
+    }
+
+    #[inline]
+    pub fn record_sequential_compaction(
+        &self,
+        bytes_read: u64,
+        bytes_written: u64,
+        num_files: u64,
+        time_micros: u64,
+    ) {
+        self.record_compaction(bytes_read, bytes_written, num_files);
+        self.num_sequential_compactions
+            .fetch_add(1, Ordering::Relaxed);
+        self.compaction_time_micros
+            .fetch_add(time_micros, Ordering::Relaxed);
+    }
+
     // Bloom filter tracking
     #[inline]
     pub fn record_bloom_filter_check(&self, useful: bool) {
@@ -213,6 +250,22 @@ impl Statistics {
         if written > 0.0 { read / written } else { 0.0 }
     }
 
+    pub fn avg_compaction_time_ms(&self) -> f64 {
+        let total_time = self.compaction_time_micros.load(Ordering::Relaxed) as f64;
+        let num_compactions = self.num_compactions.load(Ordering::Relaxed) as f64;
+        if num_compactions > 0.0 {
+            total_time / num_compactions / 1000.0
+        } else {
+            0.0
+        }
+    }
+
+    pub fn parallel_compaction_ratio(&self) -> f64 {
+        let parallel = self.num_parallel_compactions.load(Ordering::Relaxed) as f64;
+        let total = self.num_compactions.load(Ordering::Relaxed) as f64;
+        if total > 0.0 { parallel / total } else { 0.0 }
+    }
+
     /// Reset all statistics to zero
     pub fn reset(&self) {
         self.num_keys_written.store(0, Ordering::Relaxed);
@@ -238,6 +291,10 @@ impl Statistics {
         self.compaction_bytes_read.store(0, Ordering::Relaxed);
         self.compaction_bytes_written.store(0, Ordering::Relaxed);
         self.num_files_compacted.store(0, Ordering::Relaxed);
+        self.num_parallel_compactions.store(0, Ordering::Relaxed);
+        self.num_sequential_compactions.store(0, Ordering::Relaxed);
+        self.num_subcompactions.store(0, Ordering::Relaxed);
+        self.compaction_time_micros.store(0, Ordering::Relaxed);
         self.bloom_filter_useful.store(0, Ordering::Relaxed);
         self.bloom_filter_checked.store(0, Ordering::Relaxed);
         self.num_errors.store(0, Ordering::Relaxed);
@@ -279,6 +336,10 @@ impl Statistics {
             \n\
             Compaction:\n\
             - Runs:          {}\n\
+            - Parallel:      {} ({:.1}%)\n\
+            - Sequential:    {}\n\
+            - Subcompactions: {}\n\
+            - Avg time:      {:.2} ms\n\
             - Bytes read:    {} ({:.2} MB)\n\
             - Bytes written: {} ({:.2} MB)\n\
             - Files:         {}\n\
@@ -316,6 +377,11 @@ impl Statistics {
             self.num_blocks_loaded.load(Ordering::Relaxed),
             self.num_blocks_cached.load(Ordering::Relaxed),
             self.num_compactions.load(Ordering::Relaxed),
+            self.num_parallel_compactions.load(Ordering::Relaxed),
+            self.parallel_compaction_ratio() * 100.0,
+            self.num_sequential_compactions.load(Ordering::Relaxed),
+            self.num_subcompactions.load(Ordering::Relaxed),
+            self.avg_compaction_time_ms(),
             self.compaction_bytes_read.load(Ordering::Relaxed),
             self.compaction_bytes_read.load(Ordering::Relaxed) as f64 / 1024.0 / 1024.0,
             self.compaction_bytes_written.load(Ordering::Relaxed),
@@ -418,5 +484,30 @@ mod tests {
         assert!(report.contains("Keys written:  1"));
         assert!(report.contains("Keys read:     1"));
         assert!(report.contains("Hit rate:      50.00%"));
+    }
+
+    #[test]
+    fn test_parallel_compaction_stats() {
+        let stats = Statistics::new();
+
+        // Record 2 parallel compactions
+        stats.record_parallel_compaction(10000, 8000, 5, 4, 5000);
+        stats.record_parallel_compaction(20000, 16000, 10, 4, 7000);
+
+        // Record 1 sequential compaction
+        stats.record_sequential_compaction(5000, 4000, 3, 3000);
+
+        assert_eq!(stats.num_compactions.load(Ordering::Relaxed), 3);
+        assert_eq!(stats.num_parallel_compactions.load(Ordering::Relaxed), 2);
+        assert_eq!(stats.num_sequential_compactions.load(Ordering::Relaxed), 1);
+        assert_eq!(stats.num_subcompactions.load(Ordering::Relaxed), 8); // 4+4
+        assert_eq!(stats.compaction_time_micros.load(Ordering::Relaxed), 15000); // 5000+7000+3000
+        assert_eq!(stats.compaction_bytes_read.load(Ordering::Relaxed), 35000);
+        assert_eq!(
+            stats.compaction_bytes_written.load(Ordering::Relaxed),
+            28000
+        );
+        assert_eq!(stats.parallel_compaction_ratio(), 2.0 / 3.0);
+        assert_eq!(stats.avg_compaction_time_ms(), 5.0); // 15000/3/1000
     }
 }
