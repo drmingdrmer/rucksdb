@@ -7,6 +7,7 @@ pub mod backup;
 pub mod cache;
 pub mod checkpoint;
 pub mod column_family;
+pub mod compaction;
 pub mod compression;
 pub mod db;
 pub mod filter;
