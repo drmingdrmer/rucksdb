@@ -15,6 +15,7 @@ fn test_compaction_under_concurrent_writes() {
         write_buffer_size: 2 * 1024, // 2KB - triggers many flushes
         block_cache_size: 1000,
         table_cache_size: 100,
+        enable_background_compaction: false, // Disable automatic compaction for controlled testing
         ..Default::default()
     };
 
@@ -77,6 +78,7 @@ fn test_large_dataset_compaction() {
         write_buffer_size: 4 * 1024, // 4KB
         block_cache_size: 2000,
         table_cache_size: 100,
+        enable_background_compaction: false, // Disable for controlled testing
         ..Default::default()
     };
 
@@ -127,6 +129,7 @@ fn test_compaction_with_many_overwrites() {
         error_if_exists: false,
         write_buffer_size: 2 * 1024,
         block_cache_size: 1000,
+        enable_background_compaction: false, // Disable for controlled testing
         ..Default::default()
     };
 
@@ -175,6 +178,7 @@ fn test_compaction_priority_with_unbalanced_levels() {
         error_if_exists: false,
         write_buffer_size: 1024, // 1KB - very small to create many files
         block_cache_size: 1000,
+        enable_background_compaction: false, // Disable for controlled testing
         ..Default::default()
     };
 
@@ -222,6 +226,7 @@ fn test_concurrent_reads_during_compaction() {
         error_if_exists: false,
         write_buffer_size: 2 * 1024,
         block_cache_size: 1000,
+        enable_background_compaction: false, // Disable for controlled testing
         ..Default::default()
     };
 
@@ -286,6 +291,7 @@ fn test_compaction_with_mixed_operations() {
         error_if_exists: false,
         write_buffer_size: 2 * 1024,
         block_cache_size: 1000,
+        enable_background_compaction: false, // Disable for controlled testing
         ..Default::default()
     };
 
