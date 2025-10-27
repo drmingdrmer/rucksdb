@@ -296,6 +296,7 @@ fn main() {
         },
         enable_subcompaction: true,
         subcompaction_min_size: 10 * 1024 * 1024,
+        parallel_compaction_threads: 4,
         merge_operator: None,
     };
 

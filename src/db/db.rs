@@ -9,12 +9,13 @@ use parking_lot::RwLock;
 use crate::{
     cache::{LRUCache, TableCache},
     column_family::{ColumnFamilyHandle, ColumnFamilySet},
+    compaction::parallel_executor::{ParallelCompactionConfig, ParallelCompactionExecutor},
     filter::{BloomFilterPolicy, FilterPolicy},
     memtable::memtable::InternalKey,
     merge::MergeOperator,
     table::{CompressionType, TableBuilder, TableReader},
     util::{Result, Slice, Status},
-    version::{FileMetaData, VersionEdit},
+    version::{FileMetaData, VersionEdit, subcompaction::SubcompactionConfig},
     wal,
 };
 
@@ -49,6 +50,8 @@ pub struct DBOptions {
     pub filter_bits_per_key: Option<usize>, // Bloom filter bits per key (None = disabled)
     pub enable_subcompaction: bool,         // Enable parallel subcompaction
     pub subcompaction_min_size: u64,        // Minimum size to trigger subcompaction (bytes)
+    pub parallel_compaction_threads: usize, /* Number of threads for parallel compaction (0 =
+                                             * disable) */
     pub merge_operator: Option<Arc<dyn MergeOperator>>, // Merge operator for this database
 }
 
@@ -65,6 +68,7 @@ impl Default for DBOptions {
             filter_bits_per_key: Some(10), // ~1% false positive rate
             enable_subcompaction: true,
             subcompaction_min_size: 10 * 1024 * 1024, // 10 MB
+            parallel_compaction_threads: 4,           // Use 4 threads for parallel compaction
             merge_operator: None,                     // No merge operator by default
         }
     }
@@ -809,138 +813,54 @@ impl DB {
             (level_files, next_level_files)
         };
 
-        // Merge all entries from selected files
-        let mut all_entries: Vec<(Slice, Slice)> = Vec::new();
+        // Execute compaction (parallel or sequential based on configuration)
+        let output_files =
+            if self.options.parallel_compaction_threads > 0 && self.options.enable_subcompaction {
+                // Use parallel compaction executor
+                let filter_policy = self.options.filter_bits_per_key.map(|bits_per_key| {
+                    Arc::new(BloomFilterPolicy::new(bits_per_key)) as Arc<dyn FilterPolicy>
+                });
 
-        // Read from level files
-        for file in &level_files {
-            let table = self.get_table(file.number)?;
-            let mut table_guard = table.lock().unwrap();
-            // Simple iteration - in production would use proper iterator
-            let entries = self.read_all_from_table(&mut table_guard)?;
-            all_entries.extend(entries);
-        }
+                let config = ParallelCompactionConfig {
+                    max_threads: self.options.parallel_compaction_threads,
+                    subcompaction_config: SubcompactionConfig {
+                        min_file_size: self.options.subcompaction_min_size,
+                        target_subcompactions: self.options.parallel_compaction_threads,
+                        enable_parallel: true,
+                    },
+                    enable_parallel: true,
+                };
 
-        // Read from next level files
-        for file in &next_level_files {
-            let table = self.get_table(file.number)?;
-            let mut table_guard = table.lock().unwrap();
-            let entries = self.read_all_from_table(&mut table_guard)?;
-            all_entries.extend(entries);
-        }
+                let executor = ParallelCompactionExecutor::new(
+                    config,
+                    self.db_path.clone(),
+                    self.options.compression_type,
+                    filter_policy,
+                );
 
-        // Sort and deduplicate (keeping newest values)
-        // Decode InternalKeys for proper sorting
-        all_entries.sort_by(|a, b| {
-            // Handle potential decode errors gracefully
-            let key_a = match InternalKey::decode(&a.0) {
-                Ok(k) => k,
-                Err(_) => {
-                    // If decode fails, treat it as a plain user key and compare raw bytes
-                    return a.0.data().cmp(b.0.data());
-                },
+                let results = executor.execute_compaction(
+                    level,
+                    level_files.clone(),
+                    next_level_files.clone(),
+                    &|| {
+                        let version_set = cf.version_set();
+                        let version_set_guard = version_set.read();
+                        version_set_guard.new_file_number()
+                    },
+                )?;
+
+                // Collect output files from results
+                results
+                    .into_iter()
+                    .filter_map(|r| r.file_meta)
+                    .collect::<Vec<_>>()
+            } else {
+                // Sequential compaction (original implementation)
+                self.execute_sequential_compaction(level, &level_files, &next_level_files, &cf)?
             };
-            let key_b = match InternalKey::decode(&b.0) {
-                Ok(k) => k,
-                Err(_) => {
-                    // If decode fails, treat it as a plain user key and compare raw bytes
-                    return a.0.data().cmp(b.0.data());
-                },
-            };
 
-            // First compare user keys
-            match key_a.user_key().data().cmp(key_b.user_key().data()) {
-                std::cmp::Ordering::Equal => {
-                    // For same user key, sort by sequence (descending - higher sequence first)
-                    match key_b.sequence().cmp(&key_a.sequence()) {
-                        std::cmp::Ordering::Equal => {
-                            // If sequences are equal, sort by type
-                            key_a.value_type.cmp(&key_b.value_type)
-                        },
-                        other => other,
-                    }
-                },
-                other => other,
-            }
-        });
-
-        let mut merged: Vec<(Slice, Slice)> = Vec::new();
-        let mut last_user_key: Option<Slice> = None;
-
-        for (key, value) in all_entries {
-            // Try to decode as InternalKey
-            match InternalKey::decode(&key) {
-                Ok(internal_key) => {
-                    let user_key = internal_key.user_key().clone();
-
-                    // Skip if we've already seen this user_key (keep first = highest sequence)
-                    #[allow(clippy::collapsible_if)]
-                    if let Some(ref last) = last_user_key {
-                        if last == &user_key {
-                            continue;
-                        }
-                    }
-
-                    // Keep deletion markers EXCEPT when target level is bottom (L6)
-                    // Deletion markers need to persist to suppress older versions below
-                    let is_bottom_level = level + 1 >= 6;
-                    if internal_key.is_deletion() && is_bottom_level {
-                        // Drop deletion marker at bottom level - nothing below to suppress
-                        last_user_key = Some(user_key);
-                        continue;
-                    }
-
-                    // Add entry (either value or deletion marker for non-bottom levels)
-                    merged.push((key, value));
-
-                    last_user_key = Some(user_key);
-                },
-                Err(_) => {
-                    // Skip entries that can't be decoded as InternalKeys
-                    // All entries in our system should be InternalKeys
-                    // If we can't decode one, it's likely corrupted data
-                    continue;
-                },
-            }
-        }
-
-        // If all entries were deletion markers dropped at bottom level, merged will be
-        // empty We still need to delete the old files
-        let has_output = !merged.is_empty();
-
-        // Write new file to next level (only if we have data)
-        let (file_num, file_size, smallest, largest) = if has_output {
-            let file_num = {
-                let version_set = cf.version_set();
-                let version_set_guard = version_set.read();
-                version_set_guard.new_file_number()
-            };
-            let sst_path = self.db_path.join(format!("{file_num:06}.sst"));
-
-            let mut builder = self.create_table_builder(&sst_path)?;
-            for (key, value) in &merged {
-                builder.add(key, value)?;
-            }
-            builder.finish(self.options.compression_type)?;
-
-            // Get file size and key range
-            let file_size = std::fs::metadata(&sst_path)
-                .map_err(|e| Status::io_error(format!("Failed to get file size: {e}")))?
-                .len();
-
-            // Extract user keys from InternalKeys for file metadata
-            // File metadata stores user keys, not InternalKeys
-            use crate::memtable::memtable::InternalKey;
-            let smallest_internal = InternalKey::decode(&merged.first().unwrap().0)?;
-            let largest_internal = InternalKey::decode(&merged.last().unwrap().0)?;
-            let smallest = smallest_internal.user_key().clone();
-            let largest = largest_internal.user_key().clone();
-
-            (Some(file_num), file_size, smallest, largest)
-        } else {
-            // No output file - all entries were deletion markers dropped at bottom level
-            (None, 0, Slice::empty(), Slice::empty())
-        };
+        // Calculate statistics
+        let file_size: u64 = output_files.iter().map(|f| f.file_size).sum();
 
         // Record compaction statistics
         let bytes_read: u64 = level_files.iter().map(|f| f.file_size).sum::<u64>()
@@ -972,7 +892,7 @@ impl DB {
         // Create VersionEdit
         let mut edit = VersionEdit::new();
 
-        // Delete old files (always, even if merged is empty)
+        // Delete old files (always, even if output is empty)
         for file in &level_files {
             edit.delete_file(level, file.number);
         }
@@ -980,9 +900,8 @@ impl DB {
             edit.delete_file(level + 1, file.number);
         }
 
-        // Add new file (only if we created one)
-        if let Some(num) = file_num {
-            let file_meta = FileMetaData::new(num, file_size, smallest, largest);
+        // Add new output files
+        for file_meta in output_files {
             edit.add_file(level + 1, file_meta);
         }
 
@@ -1004,6 +923,108 @@ impl DB {
         }
 
         Ok(())
+    }
+
+    /// Execute sequential compaction (fallback when parallel is disabled)
+    fn execute_sequential_compaction(
+        &self,
+        level: usize,
+        level_files: &[FileMetaData],
+        next_level_files: &[FileMetaData],
+        cf: &Arc<crate::column_family::ColumnFamilyData>,
+    ) -> Result<Vec<FileMetaData>> {
+        let mut all_entries: Vec<(Slice, Slice)> = Vec::new();
+
+        // Read from level files
+        for file in level_files {
+            let table = self.get_table(file.number)?;
+            let mut table_guard = table.lock().unwrap();
+            let entries = self.read_all_from_table(&mut table_guard)?;
+            all_entries.extend(entries);
+        }
+
+        // Read from next level files
+        for file in next_level_files {
+            let table = self.get_table(file.number)?;
+            let mut table_guard = table.lock().unwrap();
+            let entries = self.read_all_from_table(&mut table_guard)?;
+            all_entries.extend(entries);
+        }
+
+        // Sort and deduplicate
+        all_entries.sort_by(|a, b| {
+            let key_a = match InternalKey::decode(&a.0) {
+                Ok(k) => k,
+                Err(_) => return a.0.data().cmp(b.0.data()),
+            };
+            let key_b = match InternalKey::decode(&b.0) {
+                Ok(k) => k,
+                Err(_) => return a.0.data().cmp(b.0.data()),
+            };
+
+            match key_a.user_key().data().cmp(key_b.user_key().data()) {
+                std::cmp::Ordering::Equal => match key_b.sequence().cmp(&key_a.sequence()) {
+                    std::cmp::Ordering::Equal => key_a.value_type.cmp(&key_b.value_type),
+                    other => other,
+                },
+                other => other,
+            }
+        });
+
+        let mut merged: Vec<(Slice, Slice)> = Vec::new();
+        let mut last_user_key: Option<Slice> = None;
+
+        for (key, value) in all_entries {
+            if let Ok(internal_key) = InternalKey::decode(&key) {
+                let user_key = internal_key.user_key().clone();
+
+                #[allow(clippy::collapsible_if)]
+                if let Some(ref last) = last_user_key {
+                    if last == &user_key {
+                        continue;
+                    }
+                }
+
+                let is_bottom_level = level + 1 >= 6;
+                if internal_key.is_deletion() && is_bottom_level {
+                    last_user_key = Some(user_key);
+                    continue;
+                }
+
+                merged.push((key, value));
+                last_user_key = Some(user_key);
+            }
+        }
+
+        if merged.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // Write output file
+        let file_num = {
+            let version_set = cf.version_set();
+            let version_set_guard = version_set.read();
+            version_set_guard.new_file_number()
+        };
+        let sst_path = self.db_path.join(format!("{file_num:06}.sst"));
+
+        let mut builder = self.create_table_builder(&sst_path)?;
+        for (key, value) in &merged {
+            builder.add(key, value)?;
+        }
+        builder.finish(self.options.compression_type)?;
+
+        let file_size = std::fs::metadata(&sst_path)
+            .map_err(|e| Status::io_error(format!("Failed to get file size: {e}")))?
+            .len();
+
+        let smallest_internal = InternalKey::decode(&merged.first().unwrap().0)?;
+        let largest_internal = InternalKey::decode(&merged.last().unwrap().0)?;
+        let smallest = smallest_internal.user_key().clone();
+        let largest = largest_internal.user_key().clone();
+
+        let file_meta = FileMetaData::new(file_num, file_size, smallest, largest);
+        Ok(vec![file_meta])
     }
 
     /// Read all entries from a table
