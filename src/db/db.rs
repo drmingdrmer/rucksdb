@@ -9,7 +9,10 @@ use parking_lot::RwLock;
 use crate::{
     cache::{LRUCache, TableCache},
     column_family::{ColumnFamilyHandle, ColumnFamilySet},
-    compaction::parallel_executor::{ParallelCompactionConfig, ParallelCompactionExecutor},
+    compaction::{
+        background_scheduler::BackgroundCompactionScheduler,
+        parallel_executor::{ParallelCompactionConfig, ParallelCompactionExecutor},
+    },
     filter::{BloomFilterPolicy, FilterPolicy},
     memtable::memtable::InternalKey,
     merge::MergeOperator,
@@ -53,6 +56,11 @@ pub struct DBOptions {
     pub parallel_compaction_threads: usize, /* Number of threads for parallel compaction (0 =
                                              * disable) */
     pub merge_operator: Option<Arc<dyn MergeOperator>>, // Merge operator for this database
+    // Background compaction settings
+    pub enable_background_compaction: bool, // Enable automatic background compaction
+    pub compaction_check_interval_ms: u64,  // How often to check if compaction is needed
+    pub l0_compaction_trigger: usize,       // Number of L0 files that triggers compaction
+    pub l0_stop_writes_trigger: usize,      // Number of L0 files that stops writes (write stall)
 }
 
 impl Default for DBOptions {
@@ -70,6 +78,12 @@ impl Default for DBOptions {
             subcompaction_min_size: 10 * 1024 * 1024, // 10 MB
             parallel_compaction_threads: 4,           // Use 4 threads for parallel compaction
             merge_operator: None,                     // No merge operator by default
+            // Background compaction defaults
+            enable_background_compaction: true, // Enable by default
+            compaction_check_interval_ms: 1000, // Check every 1 second
+            l0_compaction_trigger: 4,           // Trigger compaction when L0 has 4+ files
+            l0_stop_writes_trigger: 12,         /* Stop writes when L0 has 12+ files (safety
+                                                 * threshold) */
         }
     }
 }
@@ -764,6 +778,11 @@ impl DB {
         // Record flush statistics
         self.statistics.record_memtable_flush(file_size);
 
+        // Check if we need to trigger compaction after flush
+        if self.options.enable_background_compaction {
+            self.check_and_trigger_compaction(cf)?;
+        }
+
         Ok(())
     }
 
@@ -1083,6 +1102,26 @@ impl DB {
 
         if let Some(level) = level {
             self.compact_level_cf(cf_handle, level)?;
+        }
+
+        Ok(())
+    }
+
+    /// Check if compaction is needed and trigger it automatically
+    fn check_and_trigger_compaction(
+        &self,
+        cf: &Arc<crate::column_family::ColumnFamilyData>,
+    ) -> Result<()> {
+        // Check if compaction is needed based on L0 file count
+        let should_compact = BackgroundCompactionScheduler::should_compact(
+            &self.column_families,
+            cf.id(),
+            self.options.l0_compaction_trigger,
+        );
+
+        if should_compact {
+            // Trigger compaction for this CF
+            self.maybe_compact_cf(&cf.handle().clone())?;
         }
 
         Ok(())

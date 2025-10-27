@@ -298,6 +298,11 @@ fn main() {
         subcompaction_min_size: 10 * 1024 * 1024,
         parallel_compaction_threads: 4,
         merge_operator: None,
+        // Background compaction settings
+        enable_background_compaction: false, // Disable for benchmarking
+        compaction_check_interval_ms: 1000,
+        l0_compaction_trigger: 4,
+        l0_stop_writes_trigger: 12,
     };
 
     let db = DB::open(db_path.to_str().unwrap(), options).unwrap();
